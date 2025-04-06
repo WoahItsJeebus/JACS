@@ -27,8 +27,6 @@ Jeebus' Auto-Clicker Script
   https://www.virustotal.com/gui/file/7f805801fc5ee3105ca36f533bcd6574af6f7853b78358862e76f6740bf88f13?nocache=1
 </details>
 
-<details><summary>Screenshot(s)</summary>
-  <p align="center">
-    <img src="https://github.com/user-attachments/assets/b24a5b01-60a1-4fab-871f-082caf1a9aaf">
-  </p>
-</details>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/b24a5b01-60a1-4fab-871f-082caf1a9aaf">
+</p>
