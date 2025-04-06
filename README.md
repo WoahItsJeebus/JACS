@@ -23,6 +23,10 @@ Jeebus' Auto-Clicker Script
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/WoahItsJeebus/JACS?sort=semver&display_name=tag&style=plastic&label=Download%20Latest" height="40" width="340">
 </a></p>
 
+<details><summary>Virus Scan</summary>
+  https://www.virustotal.com/gui/file/7f805801fc5ee3105ca36f533bcd6574af6f7853b78358862e76f6740bf88f13?nocache=1
+</details>
+
 <details><summary>Screenshot(s)</summary>
   <p align="center">
     <img src="https://github.com/user-attachments/assets/a371f014-856a-4882-81da-074cb1644bc6">
