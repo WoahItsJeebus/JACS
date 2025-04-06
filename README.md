@@ -1,5 +1,4 @@
-# JACS
-Jeebus' Auto-Clicker Script
+# Jeebus' Auto-Clicker Script
 
 - ### Anti-AFK
   - This script will look for an active Roblox process, focus it, click the center of the window, and return to the previously active window (if any), repeats every 15 minutes unless specified otherwise.
