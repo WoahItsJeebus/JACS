@@ -10,20 +10,20 @@ Jeebus' Auto-Clicker Script
   - No keybinds involved. Simply toggle the auto-clicker and continue with what you were doing!
 - ### Progress bar & time tracking
   - See how long until the next auto-click!
-> [!NOTE]
-> This script is the first *real* project I've put together since learning a small bit of AHK in my offtime. As a result, a lot of what you'll find may be unoptimized or sloppy.
 
 <!-- ################## -->
 #
-> [!CAUTION]
-> Bugs may occur when searching for the Windows Store version of Roblox.
-> As this is my very first real project in this language, bugs can occur at any point. Relaunching the script or using an earlier build may circumvent these bugs.
+> [!NOTE]
+> Bugs may sometimes occur when searching for the Windows Store version of Roblox.
 
-<p align="center"><a href="https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk">
+<p align="center"><a href="https://github.com/WoahItsJeebus/JACS/releases/download/Launcher/JACS_Launcher.exe">
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/WoahItsJeebus/JACS?sort=semver&display_name=tag&style=plastic&label=Download%20Latest" height="40" width="340">
 </a></p>
 
 <details><summary>Virus Scan</summary>
+  VirusTotal Scan Results:
+  - My script has been scanned using VirusTotal. One out of numerous antivirus engines flagged the executable, which is a known false positive associated with AutoHotkey scripts. We have submitted a report to the vendor for reevaluation.
+
   https://www.virustotal.com/gui/file/7f805801fc5ee3105ca36f533bcd6574af6f7853b78358862e76f6740bf88f13?nocache=1
 </details>
 
