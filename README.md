@@ -1,4 +1,6 @@
-# Jeebus' Auto-Clicker Script
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/5466c7da-ff39-4525-9fc5-2703fccb4b0e">
+</p>
 
 - ### Anti-AFK
   - This script will look for an active Roblox process, focus it, click the center of the window, and return to the previously active window (if any), repeats every 15 minutes unless specified otherwise.
