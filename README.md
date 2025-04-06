@@ -29,6 +29,6 @@ Jeebus' Auto-Clicker Script
 
 <details><summary>Screenshot(s)</summary>
   <p align="center">
-    <img src="https://github.com/user-attachments/assets/a371f014-856a-4882-81da-074cb1644bc6">
+    <img src="https://github.com/user-attachments/assets/b24a5b01-60a1-4fab-871f-082caf1a9aaf">
   </p>
 </details>
