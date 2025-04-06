@@ -22,7 +22,7 @@ Jeebus' Auto-Clicker Script
 
 <details><summary>Virus Scan</summary>
   VirusTotal Scan Results:
-  - My script has been scanned using VirusTotal. One out of numerous antivirus engines flagged the executable, which is a known false positive associated with AutoHotkey scripts. We have submitted a report to the vendor for reevaluation.
+  - My script has been scanned using VirusTotal. One out of numerous antivirus engines flagged the executable, which is a known false positive associated with AutoHotkey scripts. I have submitted a report to the vendor for reevaluation.
 
   https://www.virustotal.com/gui/file/7f805801fc5ee3105ca36f533bcd6574af6f7853b78358862e76f6740bf88f13?nocache=1
 </details>
