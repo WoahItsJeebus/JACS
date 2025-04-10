@@ -13,7 +13,8 @@
   - See how long until the next auto-click!
 
 <!-- ################## -->
-#
+___
+
 > [!NOTE]
 > Bugs may sometimes occur when searching for the Windows Store version of Roblox.
 <details><summary>Virus Scan</summary>
@@ -22,6 +23,11 @@
 
   https://www.virustotal.com/gui/file/7f805801fc5ee3105ca36f533bcd6574af6f7853b78358862e76f6740bf88f13?nocache=1
 </details>
+
+___
+
+## Dependencies
+- [AutoHotKey v2](https://autohotkey.com/download/ahk-v2.exe)
 
 <p align="center"><a href="https://github.com/WoahItsJeebus/JACS/releases/download/Launcher/JACS_Launcher.exe">
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/WoahItsJeebus/JACS?sort=semver&display_name=tag&style=plastic&label=Download%20Latest" height="40" width="340">
