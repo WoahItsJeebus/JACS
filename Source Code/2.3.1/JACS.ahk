@@ -12,7 +12,7 @@ localScriptDir := A_LocalAppData "\JACS\"
 downloadedIcon := localScriptDir "images\Icon.ico"
 
 global initializing := true
-global version := "2.3.0"
+global version := "2.3.1"
 
 global SettingsExists := RegRead("HKCU\Software\JACS", "Exists", false)
 global oldSettingsRemoved := RegRead("HKCU\Software\JACS", "OldSettingsRemoved", false)
@@ -2204,7 +2204,7 @@ toggleAutoUpdate(doUpdate){
 }
 
 setTrayIcon(*) {
-	; createDefaultDirectories()
+	createDefaultDirectories()
 	checkDownload(*) {
 		if !FileExist(downloadedIcon)
 			DownloadURL("https://raw.githubusercontent.com/WoahItsJeebus/JACS/refs/heads/main/JACS_Tray.ico", downloadedIcon)
@@ -2247,7 +2247,7 @@ WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
     ; 0xF020 (SC_MINIMIZE) indicates the user is minimizing the window.
     if (wParam = 0xF020) {
         ; Save the current (restored) position before the minimize animation starts.
-        pos := WinGetMinMax(MainUI.Title) != -1 and WinGetPos(&X,&Y,,,MainUI.Title)
+        pos := WinGetMinMax(MainUI.Title) != -1 and WinGetPos(&X := MainUI_PosX,&Y := MainUI_PosY,,,MainUI.Title)
 		pos := {X: X, Y: Y}
 
 		RegWrite(pos.X, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosX")
