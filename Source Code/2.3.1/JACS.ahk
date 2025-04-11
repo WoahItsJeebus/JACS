@@ -1,4 +1,4 @@
-#Requires AutoHotkey >=2.0.19
+#Requires AutoHotkey >=2.0.19 64-bit
 #SingleInstance Force
 
 CoordMode("Mouse", "Screen")
@@ -2751,4 +2751,3 @@ enableHotkey(keyName?, bind?) {
 }
 
 enableAllHotkeys()
-#Include ..\2.0.0\JACS.ahk
