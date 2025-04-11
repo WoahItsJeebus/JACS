@@ -1,4 +1,4 @@
-#Requires AutoHotkey >=2.0
+#Requires AutoHotkey >=2.0.19
 #SingleInstance Force
 
 CoordMode("Mouse", "Screen")
@@ -9,7 +9,7 @@ A_HotkeyInterval := 0
 A_MaxHotkeysPerInterval := 1000
 A_LocalAppData := EnvGet("LOCALAPPDATA")
 localScriptDir := A_LocalAppData "\JACS\"
-downloadedIcon := localScriptDir "img\Icon.ico"
+downloadedIcon := localScriptDir "images\Icon.ico"
 
 global initializing := true
 global version := "2.3.0"
@@ -2204,6 +2204,7 @@ toggleAutoUpdate(doUpdate){
 }
 
 setTrayIcon(*) {
+	createDefaultDirectories()
 	checkDownload(*) {
 		if !FileExist(downloadedIcon)
 			DownloadURL("https://raw.githubusercontent.com/WoahItsJeebus/JACS/refs/heads/main/JACS_Tray.ico", downloadedIcon)
@@ -2233,13 +2234,22 @@ DeleteTrayTabs(*) {
 			A_TrayMenu.Delete(tab)
 }
 
+createDefaultDirectories(*) {
+	if !FileExist(localScriptDir)
+		DirCreate(localScriptDir)
+
+	if !FileExist(localScriptDir "\images")
+		DirCreate(localScriptDir "\images")
+}
+
 WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
     global MainUI, MainUI_PosX, MainUI_PosY
     ; 0xF020 (SC_MINIMIZE) indicates the user is minimizing the window.
     if (wParam = 0xF020) {
         ; Save the current (restored) position before the minimize animation starts.
-		pos := {X: MainUI_PosX, Y: MainUI_PosY}
-        pos := WinGetMinMax(MainUI.Title) != -1 and WinGetPos(&pos.X, &pos.Y,,,MainUI.Title) or {X: MainUI_PosX, Y: MainUI_PosY}
+        pos := WinGetMinMax(MainUI.Title) != -1 and WinGetPos(&X := MainUI_PosX,&Y := MainUI_PosY,,,MainUI.Title)
+		pos := {X: X, Y: Y}
+
 		RegWrite(pos.X, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosX")
 		RegWrite(pos.Y, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosY")
         MainUI_PosX := RegReadSigned("HKCU\Software\JACS", "MainUI_PosX", A_ScreenWidth / 2)
@@ -2741,3 +2751,4 @@ enableHotkey(keyName?, bind?) {
 }
 
 enableAllHotkeys()
+#Include ..\2.0.0\JACS.ahk
