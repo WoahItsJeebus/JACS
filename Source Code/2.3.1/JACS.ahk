@@ -115,7 +115,7 @@ global Credits_CurrentColor := GetRandomColor(200, 255)
 global Credits_TargetColor := GetRandomColor(200, 255)
 global Credits_ColorChangeRate := 5 ; (higher = faster)
 
-
+OnExit(ClampMainUIPos)
 
 OnMessage(0x0112, WM_SYSCOMMAND_Handler)
 DeleteTrayTabs()
@@ -171,7 +171,7 @@ GetLatestReleaseVersion() {
     local tempJSONFile := A_Temp "\latest_release.json"
     
     try {
-        Download(URL_API, tempJSONFile)  ; Download the JSON response
+        DownloadURL(URL_API, tempJSONFile)  ; Download the JSON response
     } catch {
         return ""
     }
@@ -1891,7 +1891,7 @@ RunCore(*) {
 		;---------------
 		; Find and activate processe
 		local targetProcess := FindTargetHWND()
-		ClickWindow(targetProcess)
+		try ClickWindow(targetProcess)
 		
 		; Activate previous application window & reposition mouse
 		local lastActiveWindowID := ""
@@ -2318,7 +2318,7 @@ SendNotification(msg := "", title := "", options := "", optionalCooldown := 0) {
 					global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
 					global tempUpdateFile := A_Temp "\temp_script.ahk"
 
-					Download(URL_SCRIPT, tempUpdateFile)
+					DownloadURL(URL_SCRIPT, tempUpdateFile)
 				} catch {
 					FileDelete(tempUpdateFile)
 					return SendNotification("JACS update failed to download... Continuing with onboard script", "JACS Update Failed")
@@ -2397,6 +2397,15 @@ RegReadSigned(Key, ValueName, Default) {
     }
 
     return Value
+}
+
+RegWriteSigned(Key, ValueName, Value) {
+    ; If the value is negative, convert it to its unsigned 32-bit equivalent
+    if (Value < 0)
+        Value := 0x100000000 + Value  ; 0x100000000 is 2^32
+
+    ; Write the (now unsigned) value to the registry
+    RegWrite(Key, ValueName, Value)
 }
 
 ToggleHide_Hotkey(*) {
