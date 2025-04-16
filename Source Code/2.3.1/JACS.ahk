@@ -798,7 +798,7 @@ CreateWindowSettingsGUI(*) {
 	local Descriptions := Map(
 		; Sliders
 		"AlwaysOnTopButton", "This button controls whether the script's UI stays as the top-most window on the screen.",
-		"SoundToggleButton", "This button controls the sounds that play when the auto-clicker sequence triggers, when no Roblox window is found, etc.`n`nAll: All sounds play. This includes a 3 second countdown via audible beeps, a higher pitched trigger tone indicating the sequence has begun after the aforementioned countdown, and an audible indication the script launched.`n`nLess: Only the single higher pitched indicator and indicator on script launch are played.`n`nNone: No indication sounds are played.",
+		"SoundToggleButton", "This button controls the sounds that play when the auto-clicker sequence triggers, when no target window is found, etc.`n`nAll: All sounds play. This includes a 3 second countdown via audible beeps, a higher pitched trigger tone indicating the sequence has begun after the aforementioned countdown, and an audible indication the script launched.`n`nLess: Only the single higher pitched indicator and indicator on script launch are played.`n`nNone: No indication sounds are played.",
 		"ProcessDropdown", "Pick a process from this dropdown list and the script will look for the first active process matching the name of the one selected.",
 	)
 	Descriptions["ProcessLabel"] := Descriptions["ProcessDropdown"]
@@ -1849,7 +1849,7 @@ RunCore(*) {
 
 	global doMouseLock
 
-	; Check for Roblox process
+	; Check for process
 	if not FindTargetHWND()
 		ResetCooldown()
 	; 	ToggleCore(, 2)
@@ -2060,21 +2060,29 @@ ClickWindow(process) {
 	if WinExist("A")
 		try activeTitle := WinGetTitle("A")  ; Only attempt if a window exists
 	
-	ActivateRoblox() {
+	ActivateWindow() {
 		try {
 			if not WinActive(process) and (MinutesToWait > 0 or SecondsToWait > 0)
 				WinActivate(process)
 		}
 	}
 
-	ClickRoblox(loopAmount := 1) {
+	doClick(loopAmount := 1) {
 		loop loopAmount {
 			if activeTitle and not WinExist(activeTitle)
 				break
 			
-			WinGetPos(&WindowX, &WindowY, &Width, &Height, WinGetID(process))
-			MouseGetPos(&mouseX, &mouseY, &hoverWindow, &hoverCtrl)
-			
+			local cachedWindowID := ""
+			local cachedWindowPos := ""
+			local WindowX := 0, WindowY := 0, Width := 0, Height := 0
+			local hoverWindow := ""
+			local hoverCtrl := ""
+			local mouseX := 0, mouseY := 0
+
+			try cachedWindowID := WinGetID(process)  ; Only attempt if a window exists
+			try WinGetPos(&WindowX, &WindowY, &Width, &Height, cachedWindowID)
+			try MouseGetPos(&mouseX, &mouseY, &hoverWindow, &hoverCtrl)
+
 			; Determine exact center of the active window
 			CenterX := WindowX + (Width / 2)
 			CenterY := WindowY + (Height / 2)
@@ -2084,10 +2092,10 @@ ClickWindow(process) {
 			OffsetY := Random(-MouseClickRadius, MouseClickRadius)
 
 			; Move mouse to the new randomized position within the area
-			if (hoverWindow and (hoverWindow != WinGetID(process))) and (MinutesToWait > 0 or SecondsToWait > 0)
+			if (hoverWindow and (hoverWindow != cachedWindowID)) and (MinutesToWait > 0 or SecondsToWait > 0)
 				MouseMove(CenterX + OffsetX, CenterY + OffsetY, (MouseSpeed == 0 and 0 or Random(0, MouseSpeed)))
 
-			if not hoverCtrl and (hoverWindow and hoverWindow == WinGetID(process))
+			if not hoverCtrl and (hoverWindow and cachedWindowID and hoverWindow == cachedWindowID)
 				Send "{Click}"
 
 			if loopAmount > 1
@@ -2097,9 +2105,9 @@ ClickWindow(process) {
 
 	; Use the local variable instead of calling WinGetTitle("A") again
 	if (hoverWindow and (hoverWindow != process and hoverWindow != WinGetID(process))) and activeTitle
-		ActivateRoblox()
+		ActivateWindow()
 
-	ClickRoblox(MouseClicks or 5)
+	doClick(MouseClicks or 5)
 }
 
 debugNotif(msg := "1", title := "", options := "16", duration := 2) {
