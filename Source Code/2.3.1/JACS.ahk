@@ -614,8 +614,8 @@ ClampMainUIPos(*) {
 	WinGetPos(,, &W, &H, MainUI.Title)
 	local X := MainUI_PosX + (W / 2)
 	local Y := MainUI_PosY + (H / 2)
-	local winState := WinGetMinMax(MainUI.Title) ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
-	if winState == -1
+	local winState := MainUI != "" and WinGetMinMax(MainUI.Title) or "" ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
+	if winState == -1 or winState == ""
 		return
 
 	if X > VDisplay_Width or X < -VDisplay_Width {
