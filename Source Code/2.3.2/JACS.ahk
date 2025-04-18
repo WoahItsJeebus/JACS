@@ -581,7 +581,7 @@ CreateGui(*) {
 		"ClampMainUIPosition", Map(
 			"Function", ClampMainUIPos.Bind(),
 			"Interval", 50,
-			"Disabled", true
+			"Disabled", false
 		),
 		"ColorizeCredits", Map(
 			"Function", ColorizeCredits.Bind(CreditsLink),
