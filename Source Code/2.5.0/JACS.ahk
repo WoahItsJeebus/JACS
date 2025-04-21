@@ -426,7 +426,7 @@ CreateGui(*) {
 	global ResetCooldownButton
 
 	global CreditsLink
-	global OpenExtrasLabel
+	; global OpenExtrasLabel
 
 	global MoveControl
 	global ControlResize
@@ -468,32 +468,6 @@ CreateGui(*) {
 	
 	createSideBar()
 	createMainButtons()
-
-	; Create the sidebar tab list
-	createSideBar(*) {
-		ICON_WIDTH := 50
-		BUTTON_HEIGHT := 40
-		ICON_SPACING := 50
-
-		; Icon bar container (optional, for background)
-		if not MainUI
-			return
-
-		MainUI.Add("Text", "x0 y0 w" ICON_WIDTH " h" UI_Height*1.4 " Background" intWindowColor)
-
-		; Vertical icon buttons
-		icons := ["🏠", "⚙️", "📈", "🔧"]
-		loop icons.Length {
-			y := ((A_Index - 1) * (BUTTON_HEIGHT + ICON_SPACING)) + ICON_SPACING
-			btn := MainUI.Add("Button", "x0 y" y " w" ICON_WIDTH " h" BUTTON_HEIGHT " Background" intWindowColor, icons[A_Index])
-			btn.OnEvent("Click", (btnObj, *) => OnIconClick(A_Index))
-		}
-
-		OnIconClick(i) {
-			ToolTip("You clicked icon #" i)
-			SetTimer () => ToolTip(), -1000
-		}
-	}
 
 	; Create the main buttons and controls
 	createMainButtons(*) {
@@ -544,23 +518,23 @@ CreateGui(*) {
 		ResetCooldownButton.SetFont("s12 w500", "Consolas")
 		ResetCooldownButton.Opt("Background" intWindowColor)
 
-		; Window Settings
-		WindowSettingsButton := MainUI.Add("Button", "xs Section h30 w" UI_Margin_Width/3, "Window Settings")
-		WindowSettingsButton.OnEvent("Click", CreateWindowSettingsGUI)
-		WindowSettingsButton.SetFont("s12 w500", "Consolas")
-		WindowSettingsButton.Opt("Background" intWindowColor)
+		; ; Window Settings
+		; WindowSettingsButton := MainUI.Add("Button", "xs Section h30 w" UI_Margin_Width/3, "Window Settings")
+		; WindowSettingsButton.OnEvent("Click", CreateWindowSettingsGUI)
+		; WindowSettingsButton.SetFont("s12 w500", "Consolas")
+		; WindowSettingsButton.Opt("Background" intWindowColor)
 		
-		; Mouse Settings
-		OpenMouseSettingsButton := MainUI.Add("Button", "x+1 h30 w" UI_Margin_Width/3, "Clicker Settings")
-		OpenMouseSettingsButton.OnEvent("Click", CreateClickerSettingsGUI)
-		OpenMouseSettingsButton.SetFont("s12 w500", "Consolas")
-		OpenMouseSettingsButton.Opt("Background" intWindowColor)
+		; ; Mouse Settings
+		; OpenMouseSettingsButton := MainUI.Add("Button", "x+1 h30 w" UI_Margin_Width/3, "Clicker Settings")
+		; OpenMouseSettingsButton.OnEvent("Click", CreateClickerSettingsGUI)
+		; OpenMouseSettingsButton.SetFont("s12 w500", "Consolas")
+		; OpenMouseSettingsButton.Opt("Background" intWindowColor)
 		
-		; Script Settings
-		ScriptSettingsButton := MainUI.Add("Button", "x+1 h30 w" UI_Margin_Width/3, "Script Settings")
-		ScriptSettingsButton.OnEvent("Click", CreateScriptSettingsGUI)
-		ScriptSettingsButton.SetFont("s12 w500", "Consolas")
-		ScriptSettingsButton.Opt("Background" intWindowColor)
+		; ; Script Settings
+		; ScriptSettingsButton := MainUI.Add("Button", "x+1 h30 w" UI_Margin_Width/3, "Script Settings")
+		; ScriptSettingsButton.OnEvent("Click", CreateScriptSettingsGUI)
+		; ScriptSettingsButton.SetFont("s12 w500", "Consolas")
+		; ScriptSettingsButton.Opt("Background" intWindowColor)
 		
 		; Credits
 		CreditsLink := MainUI.Add("Link", "xs c" linkColor . " Section Left h20 w" UI_Margin_Width/2, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
@@ -569,10 +543,10 @@ CreateGui(*) {
 		LinkUseDefaultColor(CreditsLink)
 
 		; Version
-		OpenExtrasLabel := MainUI.Add("Button", "x+120 Section Center 0x300 0xC00 h30 w" UI_Margin_Width/4, "Extras")
-		OpenExtrasLabel.SetFont("s12 w500", "Consolas")
-		OpenExtrasLabel.Opt("Background" intWindowColor)
-		OpenExtrasLabel.OnEvent("Click", CreateExtrasGUI)
+		; OpenExtrasLabel := MainUI.Add("Button", "x+120 Section Center 0x300 0xC00 h30 w" UI_Margin_Width/4, "Extras")
+		; OpenExtrasLabel.SetFont("s12 w500", "Consolas")
+		; OpenExtrasLabel.Opt("Background" intWindowColor)
+		; OpenExtrasLabel.OnEvent("Click", CreateExtrasGUI)
 	}
 	; LinkUseDefaultColor(VersionHyperlink)
 	
@@ -638,6 +612,65 @@ CreateGui(*) {
 	; debugNotif(refreshRate = 0 ? "Failed to retrieve refresh rate" : "Refresh Rate: " refreshRate " Hz",,,5)
 
 	initializing := false
+}
+
+; Create the sidebar tab list
+createSideBar(*) {
+	global MainUI, intWindowColor, UI_Height
+
+	ICON_SPACING  := 50
+	ICON_WIDTH    := 50
+	BUTTON_HEIGHT := 40
+
+	if not MainUI
+		return
+
+	; Sidebar background
+	MainUI.Add("Text", "x0 y0 w" ICON_WIDTH " h" UI_Height * 1.25 " Background" intWindowColor)
+
+	; Define icon data: each has a label, tooltip, and bound function
+	iconData := [
+		{label: "🪟", tooltip: "Window Settings", func: CreateWindowSettingsGUI.Bind()},
+		{label: "🖱", tooltip: "Clicker Settings", func: CreateClickerSettingsGUI.Bind()},
+		{label: "📜", tooltip: "Script Settings", func: CreateScriptSettingsGUI.Bind()},
+		{label: "✚", tooltip: "Extras", func: CreateExtrasGUI.Bind()}
+	]
+
+	; Store buttons and tooltip data for hover tracking
+	global iconButtons := []
+
+	for idx, icon in iconData {
+		y := ((idx - 1) * (BUTTON_HEIGHT + ICON_SPACING)) + ICON_SPACING
+		btn := MainUI.Add("Button", "x10 y" y " w" ICON_WIDTH " h" BUTTON_HEIGHT " Background" intWindowColor, icon.label)
+		
+		btn.OnEvent("Click", icon.func)  ; Assign specific function
+		iconButtons.Push({control: btn, tooltip: icon.tooltip})
+	}
+
+	; Tooltip hover tracker
+	global currentTooltipIndex := 0
+	SetTimer(CheckSidebarHover, 100)
+}
+
+CheckSidebarHover() {
+	global iconButtons, currentTooltipIndex
+
+	MouseGetPos &mx, &my, &winHwnd, &ctrlHwnd, 2
+
+	for idx, btnData in iconButtons {
+		if ctrlHwnd = btnData.control.Hwnd {
+			if currentTooltipIndex != idx {
+				ToolTip(btnData.tooltip)
+				currentTooltipIndex := idx
+			}
+			return
+		}
+	}
+
+	if currentTooltipIndex != 0 {
+		ToolTip()
+		currentTooltipIndex := 0
+	}
 }
 
 ClampMainUIPos(*) {
