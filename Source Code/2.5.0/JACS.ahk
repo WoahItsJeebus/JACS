@@ -9,7 +9,12 @@ A_HotkeyInterval := 0
 A_MaxHotkeysPerInterval := 1000
 A_LocalAppData := EnvGet("LOCALAPPDATA")
 localScriptDir := A_LocalAppData "\JACS\"
-downloadedIcon := localScriptDir "images\Icon.ico"
+
+IconsFolder := localScriptDir "images\icons\"
+ActiveIcon := localScriptDir "images\icons\Active.ico"
+InactiveIcon := localScriptDir "images\icons\Inactive.ico"
+SearchingIcon := localScriptDir "images\icons\Searching.ico"
+initializingIcon := localScriptDir "images\icons\Initializing.ico"
 
 global initializing := true
 global version := "2.5.0"
@@ -19,7 +24,7 @@ global oldSettingsRemoved := RegRead("HKCU\Software\JACS", "OldSettingsRemoved",
 
 createDefaultSettingsData()
 checkForOldData()
-setTrayIcon()
+setTrayIcon(initializingIcon)
 
 global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
 global MinutesToWait := RegRead("HKCU\Software\JACS", "Cooldown", 15)
@@ -517,25 +522,7 @@ CreateGui(*) {
 		ResetCooldownButton.OnEvent("Click", ResetCooldown)
 		ResetCooldownButton.SetFont("s12 w500", "Consolas")
 		ResetCooldownButton.Opt("Background" intWindowColor)
-
-		; ; Window Settings
-		; WindowSettingsButton := MainUI.Add("Button", "xs Section h30 w" UI_Margin_Width/3, "Window Settings")
-		; WindowSettingsButton.OnEvent("Click", CreateWindowSettingsGUI)
-		; WindowSettingsButton.SetFont("s12 w500", "Consolas")
-		; WindowSettingsButton.Opt("Background" intWindowColor)
-		
-		; ; Mouse Settings
-		; OpenMouseSettingsButton := MainUI.Add("Button", "x+1 h30 w" UI_Margin_Width/3, "Clicker Settings")
-		; OpenMouseSettingsButton.OnEvent("Click", CreateClickerSettingsGUI)
-		; OpenMouseSettingsButton.SetFont("s12 w500", "Consolas")
-		; OpenMouseSettingsButton.Opt("Background" intWindowColor)
-		
-		; ; Script Settings
-		; ScriptSettingsButton := MainUI.Add("Button", "x+1 h30 w" UI_Margin_Width/3, "Script Settings")
-		; ScriptSettingsButton.OnEvent("Click", CreateScriptSettingsGUI)
-		; ScriptSettingsButton.SetFont("s12 w500", "Consolas")
-		; ScriptSettingsButton.Opt("Background" intWindowColor)
-		
+			
 		; Credits
 		CreditsLink := MainUI.Add("Link", "xs c" linkColor . " Section Left h20 w" UI_Margin_Width/2, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
 		CreditsLink.SetFont("s12 w700", "Ink Free")
@@ -2330,11 +2317,11 @@ toggleAutoUpdate(doUpdate){
 	return SetTimer(AutoUpdate, 10000)
 }
 
-setTrayIcon(*) {
+setTrayIcon(iconDir := "") {
 	createDefaultDirectories()
 	checkDownload(*) {
-		if !FileExist(downloadedIcon)
-			DownloadURL("https://raw.githubusercontent.com/WoahItsJeebus/JACS/refs/heads/main/JACS_Tray.ico", downloadedIcon)
+		if !FileExist(iconDir)
+			DownloadURL("https://github.com/WoahItsJeebus/JACS/tree/main/icons", iconDir)
 	}
 	try
 		checkDownload()
@@ -2342,8 +2329,8 @@ setTrayIcon(*) {
 		SendNotification("Failed to set TrayIcon: " testE.Message " | " testE.What)
 	}
 
-	if FileExist(downloadedIcon)
-		TraySetIcon(downloadedIcon)
+	if FileExist(iconDir)
+		TraySetIcon(iconDir)
 }
 
 DeleteTrayTabs(*) {
@@ -2367,6 +2354,9 @@ createDefaultDirectories(*) {
 
 	if !FileExist(localScriptDir "\images")
 		DirCreate(localScriptDir "\images")
+
+	if !FileExist(localScriptDir "\images\icons")
+		DirCreate(localScriptDir "\images\icons")
 }
 
 WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
