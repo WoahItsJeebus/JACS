@@ -16,15 +16,35 @@ InactiveIcon := localScriptDir "images\icons\Inactive.ico"
 SearchingIcon := localScriptDir "images\icons\Searching.ico"
 initializingIcon := localScriptDir "images\icons\Initializing.ico"
 
+icons := [
+	{
+		Icon: InactiveIcon,
+		URL: "https://raw.githubusercontent.com/WoahItsJeebus/JACS/refs/heads/main/icons/Inactive.ico"
+	},
+	{
+		Icon: SearchingIcon,
+		URL: "https://raw.githubusercontent.com/WoahItsJeebus/JACS/refs/heads/main/icons/Searching.ico"
+	},
+	{
+		Icon: ActiveIcon,
+		URL: "https://raw.githubusercontent.com/WoahItsJeebus/JACS/refs/heads/main/icons/Active.ico"
+	},
+	{
+		Icon: initializingIcon,
+		URL: "https://raw.githubusercontent.com/WoahItsJeebus/JACS/refs/heads/main/icons/Initializing.ico"
+	}
+]
+
 global initializing := true
 global version := "2.5.0"
 
 global SettingsExists := RegRead("HKCU\Software\JACS", "Exists", false)
 global oldSettingsRemoved := RegRead("HKCU\Software\JACS", "OldSettingsRemoved", false)
-
+global currentIcon := icons[4].Icon
 createDefaultSettingsData()
 checkForOldData()
-setTrayIcon(initializingIcon)
+createDefaultDirectories()
+setTrayIcon(icons[4].Icon)
 
 global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
 global MinutesToWait := RegRead("HKCU\Software\JACS", "Cooldown", 15)
@@ -38,6 +58,7 @@ global isInStartFolder := RegRead("HKCU\Software\JACS", "isInStartFolder", false
 global isActive := RegRead("HKCU\Software\JACS", "isActive", 1)
 global autoUpdateDontAsk := false
 global FirstRun := True
+global hwnd := ""
 
 ; MainUI Data
 global MainUI := ""
@@ -463,11 +484,12 @@ CreateGui(*) {
 
 	; Create new UI
 	global MainUI := Gui(AOTStatus . " +OwnDialogs") ; Create UI window
+	global hwnd := MainUI.Hwnd
 	MainUI.BackColor := intWindowColor
 	MainUI.OnEvent("Close", CloseApp)
 	MainUI.Title := "Jeebus' Auto-Clicker"
 	MainUI.SetFont("s14 w500", "Courier New")
-	
+
 	local UI_Margin_Width := UI_Width-MainUI.MarginX
 	local UI_Margin_Height := UI_Height-MainUI.MarginY
 	
@@ -1870,18 +1892,21 @@ ToggleCore(optionalControl?, forceState?, *) {
 	CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
 	CoreToggleButton.Redraw()
 
+	setTrayIcon(icons[isActive].Icon)
+	; CreateGui()
+
 	; Reset cooldown
 	ResetCooldown()
 	
 	UpdateTimerLabel()
 	; Toggle Timer
-	if isActive > 1
-	{
+	if isActive > 1 {
 		FirstRun := True
 		return SetTimer(RunCore, 100)
 	}
-	else if isActive == 1
+	else if isActive == 1 {
 		return SetTimer(RunCore, 0)
+	}
 
 	; isActive := 1
 	ResetCooldown()
@@ -1935,9 +1960,9 @@ RunCore(*) {
 	; 	ToggleCore(, 2)
 	
 	; Check if the toggle has been switched off
-	if isActive == 1
+	if isActive == 1 
 		return
-	
+
 	if (FirstRun or WaitProgress.Value >= 100) and FindTargetHWND()
 	{
 		; Kill FirstRun for automation
@@ -2210,23 +2235,37 @@ class math {
 ; ####### Extra Functions ######## ;
 ; ################################ ;
 
-DownloadURL(url, filename?) {
-    local oStream, req := ComObject("Msxml2.XMLHTTP")
-    req.open("GET", url, true)
-    req.send()
-    while req.readyState != 4
-        Sleep 100
+DownloadURL(url, filename := "") {
+    local req, oStream, path, dir
 
-    if req.status == 200 {
-        oStream := ComObject("ADODB.Stream")
-        oStream.Open()
-        oStream.Type := 1
-        oStream.Write(req.responseBody)
-        oStream.SaveToFile(filename ?? StrSplit(url, "/")[-1], 2)
-        oStream.Close()
-    } else
-        return Error("Download failed",, url)
+    ; 1. derive filename if none provided
+    path := filename ? filename : RegExReplace(url, ".*/")
+    if !path
+        throw Error("Cannot derive filename from URL: " url)
+
+    ; 2. ensure output directory exists
+    dir := RegExReplace(path, "\\[^\\]+$")
+    if (dir && !FileExist(dir))
+        DirCreate(dir)
+
+    ; 3. synchronous HTTP GET
+    req := ComObject("Msxml2.XMLHTTP.6.0")
+    req.open("GET", url, false)
+    req.send()
+    if (req.status != 200)
+        throw Error("Download failed, status " req.status " for " url)
+
+    ; 4. write binary to disk
+    oStream := ComObject("ADODB.Stream")
+    oStream.Type := 1       ; adTypeBinary
+    oStream.Open()
+    oStream.Write(req.responseBody)
+    oStream.SaveToFile(path, 2)  ; adSaveCreateOverWrite
+    oStream.Close()
+
+    return path
 }
+
 
 KeyExists(keyPath, data) {
     try {
@@ -2317,22 +2356,6 @@ toggleAutoUpdate(doUpdate){
 	return SetTimer(AutoUpdate, 10000)
 }
 
-setTrayIcon(iconDir := "") {
-	createDefaultDirectories()
-	checkDownload(*) {
-		if !FileExist(iconDir)
-			DownloadURL("https://github.com/WoahItsJeebus/JACS/tree/main/icons", iconDir)
-	}
-	try
-		checkDownload()
-	catch Error as testE {
-		SendNotification("Failed to set TrayIcon: " testE.Message " | " testE.What)
-	}
-
-	if FileExist(iconDir)
-		TraySetIcon(iconDir)
-}
-
 DeleteTrayTabs(*) {
 	TabNames := [
 		"&Edit Script",
@@ -2348,6 +2371,64 @@ DeleteTrayTabs(*) {
 			A_TrayMenu.Delete(tab)
 }
 
+setTrayIcon(icon := "") {
+	global currentIcon
+	createDefaultDirectories()
+	if FileExist(icon) and icon != currentIcon {
+		TraySetIcon(icon)
+		currentIcon := icon
+		; tell Windows to swap in the new .ico
+		global MainUI
+		if MainUI
+			UpdateGuiIcon(icon)
+	}
+}
+
+; Call this after you’ve downloaded your .ico into newIconPath
+UpdateGuiIcon(newIconPath) {
+    ; 1) Grab your GUI’s HWND
+	global hwnd
+    if !hwnd
+        throw Error("MainUI not available")
+
+    ; 2) Make sure the file exists
+    if !FileExist(newIconPath)
+        throw Error("Icon file not found: " newIconPath)
+
+    ; 3) Load the .ico from disk into an HICON
+    hIcon := DllCall(
+        "LoadImageW"
+      , "Ptr", 0                     ; hinst
+      , "WStr", newIconPath          ; file
+      , "UInt", 1                    ; IMAGE_ICON
+      , "Int", 0                     ; cx (default)
+      , "Int", 0                     ; cy (default)
+      , "UInt", 0x10                 ; LR_LOADFROMFILE
+      , "Ptr"
+    )
+    if !hIcon
+        throw Error("Failed to load icon: " newIconPath)
+
+    ; call SendMessageW directly:
+    for wParam in [0, 1]  ; ICON_SMALL, ICON_BIG
+        DllCall("SendMessageW"
+          , "Ptr", hwnd
+          , "UInt", 0x80      ; WM_SETICON
+          , "Ptr", wParam
+          , "Ptr", hIcon
+        )
+
+    ; same SetWindowPos to repaint
+    DllCall("SetWindowPos"
+      , "Ptr", hwnd
+      , "Ptr", 0
+      , "Int", 0, "Int", 0, "Int", 0, "Int", 0
+      , "UInt", 0x27
+    )
+
+    return true
+}
+
 createDefaultDirectories(*) {
 	if !FileExist(localScriptDir)
 		DirCreate(localScriptDir)
@@ -2356,7 +2437,12 @@ createDefaultDirectories(*) {
 		DirCreate(localScriptDir "\images")
 
 	if !FileExist(localScriptDir "\images\icons")
-		DirCreate(localScriptDir "\images\icons")
+		DownloadURL("https://github.com/WoahItsJeebus/JACS/tree/main/icons", "icons")
+
+	for i,IconData in icons {
+		if !FileExist(IconData.Icon)
+			DownloadURL(IconData.URL, IconData.Icon)
+	}
 }
 
 WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
