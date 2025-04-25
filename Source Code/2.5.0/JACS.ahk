@@ -1968,8 +1968,11 @@ RunCore(*) {
 		; Kill FirstRun for automation
 		if FirstRun
 			FirstRun := False
-		
+
 		ResetCooldown()
+		
+		if IsAltTabOpen() or (SecondsToWait < 10 and WinActive("A") != FindTargetHWND())
+			return
 		
 		if playSounds == 1
 			RunWarningSound()
@@ -2443,6 +2446,14 @@ createDefaultDirectories(*) {
 		if !FileExist(IconData.Icon)
 			DownloadURL(IconData.URL, IconData.Icon)
 	}
+}
+
+IsAltTabOpen() {
+    return (
+        WinExist("ahk_class MultitaskingViewFrame")
+        || WinExist("ahk_class TaskSwitcherWnd")
+        || WinExist("ahk_class #32771")
+    ) != 0
 }
 
 WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
