@@ -16,6 +16,29 @@ InactiveIcon := localScriptDir "images\icons\Inactive.ico"
 SearchingIcon := localScriptDir "images\icons\Searching.ico"
 initializingIcon := localScriptDir "images\icons\Initializing.ico"
 
+sidebarData := [
+	{
+		Icon: "🪟",
+		Tooltip: "Window Settings",
+		Function: CreateWindowSettingsGUI.Bind()
+	},
+	{
+		Icon: "🖱",
+		Tooltip: "Clicker Settings",
+		Function: CreateClickerSettingsGUI.Bind()
+	},
+	{
+		Icon: "📜",
+		Tooltip: "Script Settings",
+		Function: CreateScriptSettingsGUI.Bind()
+	},
+	{
+		Icon: "✚",
+		Tooltip: "Extras",
+		Function: CreateExtrasGUI.Bind()
+	}
+]
+
 icons := [
 	{
 		Icon: InactiveIcon,
@@ -637,23 +660,15 @@ createSideBar(*) {
 	; Sidebar background
 	MainUI.Add("Text", "x0 y0 w" ICON_WIDTH " h" UI_Height * 1.25 " Background" intWindowColor)
 
-	; Define icon data: each has a label, tooltip, and bound function
-	iconData := [
-		{label: "🪟", tooltip: "Window Settings", func: CreateWindowSettingsGUI.Bind()},
-		{label: "🖱", tooltip: "Clicker Settings", func: CreateClickerSettingsGUI.Bind()},
-		{label: "📜", tooltip: "Script Settings", func: CreateScriptSettingsGUI.Bind()},
-		{label: "✚", tooltip: "Extras", func: CreateExtrasGUI.Bind()}
-	]
-
 	; Store buttons and tooltip data for hover tracking
 	global iconButtons := []
 
-	for idx, icon in iconData {
+	for idx, icon in sidebarData {
 		y := ((idx - 1) * (BUTTON_HEIGHT + ICON_SPACING)) + ICON_SPACING
-		btn := MainUI.Add("Button", "x10 y" y " w" ICON_WIDTH " h" BUTTON_HEIGHT " Background" intWindowColor, icon.label)
+		btn := MainUI.Add("Button", "x10 y" y " w" ICON_WIDTH " h" BUTTON_HEIGHT " Background" intWindowColor, icon.Icon)
 		
-		btn.OnEvent("Click", icon.func)  ; Assign specific function
-		iconButtons.Push({control: btn, tooltip: icon.tooltip})
+		btn.OnEvent("Click", icon.Function)  ; Assign specific function
+		iconButtons.Push({control: btn, tooltip: icon.Tooltip})
 	}
 
 	; Tooltip hover tracker
@@ -1306,6 +1321,33 @@ CreateScriptSettingsGUI(*) {
 	global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFFF"
 	global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
 
+	local functions := Map(
+		"EditButton", Map(
+			"Function", (*) => (
+				EditApp()
+				CloseSettingsUI()
+			),
+		),
+		"ExitButton", Map(
+			"Function", (*) => (
+				CloseApp()
+				CloseSettingsUI()
+			),
+		),
+		"EditorSelector", Map(
+			"Function", (*) => (
+				SelectEditor()
+				CloseSettingsUI()
+			),
+		),
+		"ScriptDir", Map(
+			"Function", (*) => (
+				OpenScriptDir()
+				CloseSettingsUI()
+			),
+		),
+	)
+
 	CloseSettingsUI(*)
 	{
 		if ScriptSettingsUI {
@@ -1335,7 +1377,7 @@ CreateScriptSettingsGUI(*) {
 	
 	; Edit
 	EditButton := ScriptSettingsUI.Add("Button","vEditButton Section Center h40 w" Popout_Width/1.05, "View Script")
-	EditButton.OnEvent("Click", EditApp)
+	EditButton.OnEvent("Click", functions["EditButton"]["Function"])
 	EditButton.SetFont("s12 w500", "Consolas")
 	EditButton.Opt("Background" intWindowColor)
 	
@@ -1347,7 +1389,7 @@ CreateScriptSettingsGUI(*) {
 	
 	; Exit
 	ExitButton := ScriptSettingsUI.Add("Button", "vExitButton xs h40 w" (Popout_Width/1.05), "Close Script")
-	ExitButton.OnEvent("Click", CloseApp)
+	ExitButton.OnEvent("Click", functions["ExitButton"]["Function"])
 	ExitButton.SetFont("s12 w500", "Consolas")
 	ExitButton.Opt("Background" intWindowColor)
 
@@ -1356,13 +1398,13 @@ CreateScriptSettingsGUI(*) {
 	
 	; Editor Selector
 	EditorButton := ScriptSettingsUI.Add("Button", "vEditorSelector xs h40 w" Popout_Width/1.05, "Select Script Editor")
-	EditorButton.OnEvent("Click", SelectEditor)
+	EditorButton.OnEvent("Click", functions["EditorSelector"]["Function"])
 	EditorButton.SetFont("s12 w500", "Consolas")
 	EditorButton.Opt("Background" intWindowColor)
 
 	; Open Script Directory
 	ScriptDirButton := ScriptSettingsUI.Add("Button", "vScriptDir xs h40 w" Popout_Width/1.05, "Open File Location")
-	ScriptDirButton.OnEvent("Click", OpenScriptDir)
+	ScriptDirButton.OnEvent("Click", functions["ScriptDir"]["Function"])
 	ScriptDirButton.SetFont("s12 w500", "Consolas")
 	ScriptDirButton.Opt("Background" intWindowColor)
 
