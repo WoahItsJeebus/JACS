@@ -526,7 +526,7 @@ CreateGui(*) {
 
 	; Create the main buttons and controls
 	createMainButtons(*) {
-		local Header := MainUI.Add("Text", "x+m y+-360 Section Center cff4840 h100 w" UI_Margin_Width,"`nJeebus' Auto-Clicker — V" version)
+		local Header := MainUI.Add("Text", "x+m y+-360 Section Center vMainHeader cff4840 h100 w" UI_Margin_Width,"`nJeebus' Auto-Clicker — V" version)
 		Header.SetFont("s22 w600", "Ink Free")
 		
 		; ########################
@@ -615,7 +615,7 @@ CreateGui(*) {
 		"CheckDeviceTheme", Map(
 			"Function", CheckDeviceTheme.Bind(),
 			"Interval", 50,
-			"Disabled", false
+			"Disabled", true
 		),
 		"SaveMainUIPosition", Map(
 			"Function", SaveMainUIPosition.Bind(),
@@ -638,6 +638,25 @@ CreateGui(*) {
 			"Disabled", true
 		)
 	)
+	DarkTheme := Map(
+		"TextColor", "dddddd",
+		"LinkColor", "99c3ff",
+		"Background", "0x303030",
+		"FontFace", "Consolas",
+		"FontSize", 12,
+		"ProgressBarColor" , "5c5cd8",
+	)
+	LightTheme := Map(
+		"TextColor", "Black",
+		"LinkColor", "4787e7",
+		"Background", "0xFFFFFF",
+		"FontFace", "Consolas",
+		"FontSize", 12,
+		"ProgressBarColor" , "54cc54",
+	)	
+	
+	ApplyThemeToGui(MainUI, DarkTheme)
+
 	setTrayIcon(icons[isActive].Icon)
 	Sleep(500)
 
@@ -2300,36 +2319,36 @@ class math {
 ; ####### Extra Functions ######## ;
 ; ################################ ;
 
-ApplyThemeToGUI(GUIObj, ThemeMap) {
-    if not GUIObj
+ApplyThemeToGui(guiObj, themeMap) {
+    if not guiObj
         return
 
-    for ctrl in GUIObj {
-        try {
-            ctrlType := ctrl.Type
-            if ThemeMap.Has("Background")
-                ctrl.Opt("Background" ThemeMap.Background)
-
-            ; Optional text color (not all controls support this, but Button/Text/Checkbox do)
-            if ThemeMap.Has("Text") && ctrl.HasProp("Text") {
-                try ctrl.SetFont("c" ThemeMap.Text)
-            }
-
-            ; Customize specific types
-            switch ctrlType {
-                case "Button":
-                    if ThemeMap.Has("Button") {
-                        ctrl.Opt("Background" ThemeMap.Button)
-                    }
-                case "Edit":
-                    if ThemeMap.Has("Edit") {
-                        ctrl.Opt("Background" ThemeMap.Edit)
-                    }
-            }
-        } catch as e {
-            ToolTip("Failed to theme: " ctrl " (" e.Message ")")
-        }
+	guiObj.BackColor := themeMap["Background"]
+	guiObj.TextColor := themeMap["TextColor"]
+    for _,ctrl in guiObj {
+		if ctrl.Name != "MainHeader" {
+			try {
+				switch ctrl.Type {
+					case "Button":
+						ctrl.Opt("Background" themeMap["Background"] " c" themeMap["TextColor"])
+					case "Edit":
+						ctrl.Opt("Background" themeMap["Background"] " c" themeMap["TextColor"])
+					case "Text":
+						ctrl.Opt("Background" themeMap["Background"] " c" themeMap["TextColor"])
+					case "Progress":
+						ctrl.Opt("Background" themeMap["Background"] " Smooth c" themeMap["ProgressBarColor"])
+					case "Link":
+						ctrl.Opt("c" themeMap["LinkColor"])
+				}
+			}
+		}
+		else
+			ctrl.Opt("Background" themeMap["Background"])
     }
+}
+
+WinSetRedraw(hWnd) {
+    DllCall("RedrawWindow", "ptr", hWnd, "ptr", 0, "ptr", 0, "uint", 0x85)
 }
 
 DownloadURL(url, filename := "") {
