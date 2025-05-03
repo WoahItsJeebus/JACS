@@ -61,8 +61,11 @@ icons := [
 global initializing := true
 global version := "2.5.0"
 
-global SettingsExists := RegRead("HKCU\Software\JACS", "Exists", false)
-global oldSettingsRemoved := RegRead("HKCU\Software\JACS", "OldSettingsRemoved", false)
+RegKeyPath := "HKCU\Software\JACS"
+;"HideGUIHotkey"
+
+global SettingsExists := RegRead(RegKeyPath, "Exists", false)
+global oldSettingsRemoved := RegRead(RegKeyPath, "OldSettingsRemoved", false)
 global currentIcon := icons[4].Icon
 createDefaultSettingsData()
 checkForOldData()
@@ -70,25 +73,27 @@ createDefaultDirectories()
 setTrayIcon(icons[4].Icon)
 
 global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
-global MinutesToWait := RegRead("HKCU\Software\JACS", "Cooldown", 15)
-global SecondsToWait := SecondsToWait := RegRead("HKCU\Software\JACS", "SecondsToWait", MinutesToWait*60)
+global MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
+global SecondsToWait := SecondsToWait := RegRead(RegKeyPath, "SecondsToWait", MinutesToWait*60)
 global minCooldown := 0
 global lastUpdateTime := A_TickCount
 global CurrentElapsedTime := 0
-global playSounds := RegRead("HKCU\Software\JACS", "SoundMode", 1)
-global isInStartFolder := RegRead("HKCU\Software\JACS", "isInStartFolder", false)
+global playSounds := RegRead(RegKeyPath, "SoundMode", 1)
+global isInStartFolder := RegRead(RegKeyPath, "isInStartFolder", false)
 
-global isActive := RegRead("HKCU\Software\JACS", "isActive", 1)
+global isActive := RegRead(RegKeyPath, "isActive", 1)
 global autoUpdateDontAsk := false
 global FirstRun := True
 global hwnd := ""
+; global currentHotkey := ReadHotkeyFromRegistry()
+; RegisterHotkey(currentHotkey)
 
 ; MainUI Data
 global MainUI := ""
 global ExtrasUI := ""
-global MainUI_PosX := RegReadSigned("HKCU\Software\JACS", "MainUI_PosX", A_ScreenWidth / 2)
-global MainUI_PosY := RegReadSigned("HKCU\Software\JACS", "MainUI_PosY", A_ScreenHeight / 2)
-global isUIHidden := RegRead("HKCU\Software\JACS", "isUIHidden", false)
+global MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
+global MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
+global isUIHidden := RegRead(RegKeyPath, "isUIHidden", false)
 global MainUI_Disabled := false
 
 global UI_Width := "500"
@@ -120,19 +125,19 @@ global EditorButton := ""
 global ScriptDirButton := ""
 global AddToBootupFolderButton := ""
 global AlwaysOnTopButton := ""
-global AlwaysOnTopActive := RegRead("HKCU\Software\JACS", "AlwaysOnTop", false)
+global AlwaysOnTopActive := RegRead(RegKeyPath, "AlwaysOnTop", false)
 
 ; Extra Menus
 global PatchUI := ""
 global WindowSettingsUI := ""
 global ScriptSettingsUI := ""
 global SettingsUI := ""
-global MouseSpeed := RegRead("HKCU\Software\JACS", "MouseSpeed", 0)
-global MouseClickRateOffset := RegRead("HKCU\Software\JACS", "ClickRateOffset", 0)
-global MouseClickRadius := RegRead("HKCU\Software\JACS", "ClickRadius", 0)
-global doMouseLock := RegRead("HKCU\Software\JACS", "doMouseLock", false)
-global MouseClicks := RegRead("HKCU\Software\JACS", "MouseClicks", 5)
-global SelectedProcessExe := RegRead("HKCU\Software\JACS", "SelectedProcessExe", "RobloxPlayerBeta.exe")
+global MouseSpeed := RegRead(RegKeyPath, "MouseSpeed", 0)
+global MouseClickRateOffset := RegRead(RegKeyPath, "ClickRateOffset", 0)
+global MouseClickRadius := RegRead(RegKeyPath, "ClickRadius", 0)
+global doMouseLock := RegRead(RegKeyPath, "doMouseLock", false)
+global MouseClicks := RegRead(RegKeyPath, "MouseClicks", 5)
+global SelectedProcessExe := RegRead(RegKeyPath, "SelectedProcessExe", "RobloxPlayerBeta.exe")
 
 ; Extras Menu
 global ShowingExtrasUI := false 
@@ -154,7 +159,7 @@ global wasActiveWindow := false
 
 global ControlResize := (Target, position, size) => ResizeMethod(Target, position, size)
 global MoveControl := (Target, position, size) => MoveMethod(Target, position, size)
-global AcceptedWarning := RegRead("HKCU\Software\JACS", "AcceptedWarning", false) and CreateGui() or createWarningUI()
+global AcceptedWarning := RegRead(RegKeyPath, "AcceptedWarning", false) and CreateGui() or createWarningUI()
 global tempUpdateFile := ""
 
 ; ================= Screen Info =================== ;
@@ -165,7 +170,7 @@ global Credits_TargetColor := GetRandomColor(200, 255)
 global Credits_ColorChangeRate := 5 ; (higher = faster)
 
 ; Keys
-global KeyToSend := RegRead("HKCU\Software\JACS", "KeyToSend", "LButton")
+global KeyToSend := RegRead(RegKeyPath, "KeyToSend", "LButton")
 
 OnExit(EndScriptProcess)
 
@@ -185,11 +190,11 @@ MenuHandler(ItemName, ItemPos, MyMenu) {
 	local VDisplay_Width := SysGet(78) ; SM_CXVIRTUALSCREEN
 	local VDisplay_Height := SysGet(79) ; SM_CYVIRTUALSCREEN
 
-	RegWrite(VDisplay_Width / 2, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosX")
-	RegWrite(VDisplay_Height / 2, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosY")
+	RegWrite(VDisplay_Width / 2, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+	RegWrite(VDisplay_Height / 2, "REG_DWORD", RegKeyPath, "MainUI_PosY")
 
-	MainUI_PosX := RegReadSigned("HKCU\Software\JACS", "MainUI_PosX", VDisplay_Width / 2)
-	MainUI_PosY := RegReadSigned("HKCU\Software\JACS", "MainUI_PosY", VDisplay_Height / 2)
+	MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", VDisplay_Width / 2)
+	MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", VDisplay_Height / 2)
 
 	if isUIHidden
 		ToggleHideUI(!isUIHidden)
@@ -291,7 +296,7 @@ createWarningUI(requested := false) {
 		ExtrasUI := ""
 	}
 
-	local accepted := RegRead("HKCU\Software\JACS", "AcceptedWarning", false)
+	local accepted := RegRead(RegKeyPath, "AcceptedWarning", false)
 	if accepted and not requested {
 		if MainUI_Warning
 			MainUI_Warning.Destroy()
@@ -416,8 +421,8 @@ createWarningUI(requested := false) {
 			ExtrasUI.Opt("-Disabled")
 
 		if not accepted and clickedYes {
-			RegWrite(true, "REG_DWORD", "HKCU\Software\JACS", "AcceptedWarning")
-			accepted := RegRead("HKCU\Software\JACS", "AcceptedWarning", false)
+			RegWrite(true, "REG_DWORD", RegKeyPath, "AcceptedWarning")
+			accepted := RegRead(RegKeyPath, "AcceptedWarning", false)
 		}
 		
 		if not MainUI and accepted and clickedYes {
@@ -633,6 +638,7 @@ CreateGui(*) {
 			"Disabled", true
 		)
 	)
+	setTrayIcon(icons[isActive].Icon)
 	Sleep(500)
 
 	; Run loop functions
@@ -714,16 +720,16 @@ ClampMainUIPos(*) {
 		return
 
 	if X > VDisplay_Width or X < -VDisplay_Width {
-		RegWrite(VDisplay_Width / 2, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosX")
-		MainUI_PosX := RegReadSigned("HKCU\Software\JACS", "MainUI_PosX", VDisplay_Width / 2)
+		RegWrite(VDisplay_Width / 2, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+		MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", VDisplay_Width / 2)
 		
 		if MainUI and not isUIHidden and winState != -1
 			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
 	}
 
 	if Y > VDisplay_Height or Y < (-VDisplay_Height*2) {
-		RegWrite(VDisplay_Height / 2, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosY")
-		MainUI_PosY := RegReadSigned("HKCU\Software\JACS", "MainUI_PosY", VDisplay_Height / 2)
+		RegWrite(VDisplay_Height / 2, "REG_DWORD", RegKeyPath, "MainUI_PosY")
+		MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", VDisplay_Height / 2)
 
 		if MainUI and winState != -1
 			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
@@ -773,6 +779,10 @@ CreateWindowSettingsGUI(*) {
 	global MainUI
 	global MainUI_PosX
 	global MainUI_PosY
+	global currentHotkey
+
+	; local HotkeyLabel := ""
+	; local HotkeyButton := ""
 
 	; Local Controls
 	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
@@ -824,12 +834,22 @@ CreateWindowSettingsGUI(*) {
 	SoundToggleButton.Opt("Background" intWindowColor)
 	SoundToggleButton.SetFont("s12 w500", "Consolas")
 
+	; HotkeyLabel := WindowSettingsUI.Add("Text", "xm Center vHotkeyLabel h20 w" Popout_Width/1.05, "Hide Menu: " . (currentHotkey ? currentHotkey : "Alt+Backspace"))
+	; HotkeyButton := WindowSettingsUI.Add("Button", "xm Center vHotkeyButton h30 w" Popout_Width/1.05, "Set Toggle Key")
+	; HotkeyButton.Opt("Background" intWindowColor . " c" ControlTextColor)
+	; HotkeyLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+	; HotkeyLabel.SetFont("s12 w500", "Consolas")
+	; HotkeyButton.SetFont("s12 w500", "Consolas")
+	; HotkeyButton.OnEvent("Click", (*) => (
+	; 	HotkeyLabel.Text := WaitForKeyPress(WindowSettingsUI)
+	; ))
+
 	OnProcessDropdownChange(*) {
 		local selectedExe := ProcessDropdown.Text  ; get the selected process name
 		ProcessLabel.Text := "Searching for: " . selectedExe
 		
-		RegWrite(selectedExe, "REG_SZ", "HKCU\Software\JACS", "SelectedProcessExe")
-		SelectedProcessExe := RegRead("HKCU\Software\JACS", "SelectedProcessExe", "RobloxPlayerBeta.exe")
+		RegWrite(selectedExe, "REG_SZ", RegKeyPath, "SelectedProcessExe")
+		SelectedProcessExe := RegRead(RegKeyPath, "SelectedProcessExe", "RobloxPlayerBeta.exe")
 	}
 
 	PopulateProcessDropdown(*) {
@@ -1011,32 +1031,32 @@ CreateClickerSettingsGUI(*) {
 	updateSliderValues(ctrlObj, info) {
 		; MsgBox(ctrlObj.Name . ": " . info)
 		if ctrlObj.Name == "MouseSpeed" {
-			RegWrite(ctrlObj.Value, "REG_DWORD", "HKCU\Software\JACS", "MouseSpeed")
-			MouseSpeed := RegRead("HKCU\Software\JACS", "MouseSpeed", 0)
+			RegWrite(ctrlObj.Value, "REG_DWORD", RegKeyPath, "MouseSpeed")
+			MouseSpeed := RegRead(RegKeyPath, "MouseSpeed", 0)
 			
 			if MouseSpeedLabel
 				MouseSpeedLabel.Text := "Mouse Speed: " . (ctrlObj.Value >= 1000 ? Format("{:.2f} s", ctrlObj.Value / 1000) : ctrlObj.Value . " ms")
 		}
 
 		if ctrlObj.Name == "ClickRateOffset" {
-			RegWrite(ctrlObj.Value, "REG_DWORD", "HKCU\Software\JACS", "ClickRateOffset")
-			MouseClickRateOffset := RegRead("HKCU\Software\JACS", "ClickRateOffset", 0)
+			RegWrite(ctrlObj.Value, "REG_DWORD", RegKeyPath, "ClickRateOffset")
+			MouseClickRateOffset := RegRead(RegKeyPath, "ClickRateOffset", 0)
 			
 			if ClickRateOffsetLabel
 				ClickRateOffsetLabel.Text := "Click Rate Offset: " . (ctrlObj.Value >= 1000 ? Format("{:.2f} s", ctrlObj.Value / 1000) : ctrlObj.Value . " ms")
 		}
 
 		if ctrlObj.Name == "ClickRadius" {
-			RegWrite(ctrlObj.Value, "REG_DWORD", "HKCU\Software\JACS", "ClickRadius")
-			MouseClickRateOffset := RegRead("HKCU\Software\JACS", "ClickRadius", 0)
+			RegWrite(ctrlObj.Value, "REG_DWORD", RegKeyPath, "ClickRadius")
+			MouseClickRateOffset := RegRead(RegKeyPath, "ClickRadius", 0)
 			
 			if ClickRadiusLabel
 				ClickRadiusLabel.Text := "Click Radius: " . ctrlObj.Value . " pixels"
 		}
 
 		if ctrlObj.Name == "MouseClicks" {
-			RegWrite(ctrlObj.Value, "REG_DWORD", "HKCU\Software\JACS", "MouseClicks")
-			MouseClicks := RegRead("HKCU\Software\JACS", "MouseClicks", 5)
+			RegWrite(ctrlObj.Value, "REG_DWORD", RegKeyPath, "MouseClicks")
+			MouseClicks := RegRead(RegKeyPath, "MouseClicks", 5)
 			
 			if MouseClicksLabel
 				MouseClicksLabel.Text := "Click Amount: " . ctrlObj.Value . " clicks"
@@ -1047,10 +1067,10 @@ CreateClickerSettingsGUI(*) {
 			local targetFormattedTime := Format("{:02}:{:02}", MinutesToWait, targetSeconds)
 			local mins_suffix := SecondsToWait > 60 and " minutes" or SecondsToWait == 60 and " minute" or SecondsToWait < 60 and " seconds"
 	
-			RegWrite(ctrlObj.Value/60, "REG_DWORD", "HKCU\Software\JACS", "Cooldown")
-			RegWrite(math.clamp(Round(ctrlObj.Value,2),(minCooldown > 0 and minCooldown/60) or 0,900),"REG_DWORD", "HKCU\Software\JACS", "SecondsToWait")
-			MinutesToWait := RegRead("HKCU\Software\JACS", "Cooldown", 15)
-			SecondsToWait := RegRead("HKCU\Software\JACS", "SecondsToWait",math.clamp(Round(ctrlObj.Value * 60,2),(minCooldown > 0 and minCooldown/60) or 0,900))
+			RegWrite(ctrlObj.Value/60, "REG_DWORD", RegKeyPath, "Cooldown")
+			RegWrite(math.clamp(Round(ctrlObj.Value,2),(minCooldown > 0 and minCooldown/60) or 0,900),"REG_DWORD", RegKeyPath, "SecondsToWait")
+			MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
+			SecondsToWait := RegRead(RegKeyPath, "SecondsToWait",math.clamp(Round(ctrlObj.Value * 60,2),(minCooldown > 0 and minCooldown/60) or 0,900))
 			
 			if CooldownLabel
 				CooldownLabel.Text := "Cooldown: " targetFormattedTime . mins_suffix
@@ -1060,8 +1080,8 @@ CreateClickerSettingsGUI(*) {
 	; Toggle Function
 	updateToggle(ctrlObj, info) {
 		if ctrlObj.Name == "ToggleMouseLock" {
-			RegWrite(not doMouseLock, "REG_DWORD", "HKCU\Software\JACS", "doMouseLock")
-			doMouseLock := RegRead("HKCU\Software\JACS", "doMouseLock", false)
+			RegWrite(not doMouseLock, "REG_DWORD", RegKeyPath, "doMouseLock")
+			doMouseLock := RegRead(RegKeyPath, "doMouseLock", false)
 
 			local toggleStatus := doMouseLock and "Enabled" or "Disabled"
 			ctrlObj.Text := "Block Inputs: " . (toggleStatus == "Enabled" ? "On" : "Off")
@@ -1070,8 +1090,8 @@ CreateClickerSettingsGUI(*) {
 		if ctrlObj.Name == "SendKey" {
 			local possibleKeys := ["LButton", "RButton", "MButton"]
 			local newValue := KeyToSend == "LButton" ? "RButton" : "LButton"
-			RegWrite(newValue, "REG_SZ", "HKCU\Software\JACS", "keyToSend")
-			KeyToSend := RegRead("HKCU\Software\JACS", "KeyToSend", "LButton")
+			RegWrite(newValue, "REG_SZ", RegKeyPath, "keyToSend")
+			KeyToSend := RegRead(RegKeyPath, "KeyToSend", "LButton")
 			
 			if SendKeyButton
 				SendKeyButton.Text := "Send Key: " . (KeyToSend == "LButton" ? "Left Click" : "Right Click")
@@ -1605,8 +1625,8 @@ ToggleHideUI(newstate) {
 	if not MainUI
 		return CreateGui()
 
-	RegWrite(newstate or not isUIHidden, "REG_DWORD", "HKCU\Software\JACS", "isUIHidden")
-	isUIHidden := RegRead("HKCU\Software\JACS", "isUIHidden", false)
+	RegWrite(newstate or not isUIHidden, "REG_DWORD", RegKeyPath, "isUIHidden")
+	isUIHidden := RegRead(RegKeyPath, "isUIHidden", false)
 }
 
 updateUIVisibility(*) {
@@ -1638,16 +1658,16 @@ ToggleStartup(*) {
         FileDelete(TargetFile)
 
 		newMode := false
-		RegWrite(newMode, "REG_DWORD", "HKCU\Software\JACS", "isInStartFolder")
-		isInStartFolder := RegRead("HKCU\Software\JACS", "isInStartFolder", false)
+		RegWrite(newMode, "REG_DWORD", RegKeyPath, "isInStartFolder")
+		isInStartFolder := RegRead(RegKeyPath, "isInStartFolder", false)
 
         MsgBox "Script removed from Startup."
     } else {
         FileCopy(A_ScriptFullPath, TargetFile)
 
 		newMode := true
-		RegWrite(newMode, "REG_DWORD", "HKCU\Software\JACS", "isInStartFolder")
-		isInStartFolder := RegRead("HKCU\Software\JACS", "isInStartFolder", false)
+		RegWrite(newMode, "REG_DWORD", RegKeyPath, "isInStartFolder")
+		isInStartFolder := RegRead(RegKeyPath, "isInStartFolder", false)
 
         MsgBox "Script added to Startup."
     }
@@ -1663,8 +1683,8 @@ ToggleAOT(*) {
 	global AlwaysOnTopButton
 	global AlwaysOnTopActive
 
-	RegWrite(!AlwaysOnTopActive, "REG_DWORD", "HKCU\Software\JACS", "AlwaysOnTop")
-	AlwaysOnTopActive := RegRead("HKCU\Software\JACS", "AlwaysOnTop", false)
+	RegWrite(!AlwaysOnTopActive, "REG_DWORD", RegKeyPath, "AlwaysOnTop")
+	AlwaysOnTopActive := RegRead(RegKeyPath, "AlwaysOnTop", false)
 
 	local AOTStatus := (AlwaysOnTopActive == true and "+AlwaysOnTop") or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
@@ -1792,10 +1812,10 @@ CooldownEditPopup(*) {
     parsed.seconds := Round(parsed.minutes * 60)
     
     ; Write the new values to the registry
-    RegWrite(parsed.seconds, "REG_DWORD", "HKCU\Software\JACS", "SecondsToWait")
-    RegWrite(parsed.minutes, "REG_DWORD", "HKCU\Software\JACS", "Cooldown")
-    MinutesToWait := RegRead("HKCU\Software\JACS", "Cooldown", 15)
-    SecondsToWait := RegRead("HKCU\Software\JACS", "SecondsToWait", MinutesToWait * 60)
+    RegWrite(parsed.seconds, "REG_DWORD", RegKeyPath, "SecondsToWait")
+    RegWrite(parsed.minutes, "REG_DWORD", RegKeyPath, "Cooldown")
+    MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
+    SecondsToWait := RegRead(RegKeyPath, "SecondsToWait", MinutesToWait * 60)
     
     ; Optionally update the UI timer, etc.
     UpdateTimerLabel()
@@ -1820,13 +1840,13 @@ SaveMainUIPosition(*) {
         Y := (Y < 0) ? (0xFFFFFFFF + Y + 1) : Y
 
         if MainUI_PosX != X and (X < 32000 and X > -32000) and winState != -1 {
-            RegWrite(X, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosX")
-            MainUI_PosX := RegReadSigned("HKCU\Software\JACS", "MainUI_PosX", A_ScreenWidth / 2)
+            RegWrite(X, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+            MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
         }
 
         if MainUI_PosY != Y and (Y < 32000 and Y > -32000) and winState != -1 {
-            RegWrite(Y, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosY")
-            MainUI_PosY := RegReadSigned("HKCU\Software\JACS", "MainUI_PosY", A_ScreenHeight / 2)
+            RegWrite(Y, "REG_DWORD", RegKeyPath, "MainUI_PosY")
+            MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
         }
     }
 }
@@ -1926,9 +1946,9 @@ ToggleCore(optionalControl?, forceState?, *) {
 
 	local newMode := forceState or switchActiveState()
 	
-	RegWrite(newMode, "REG_DWORD", "HKCU\Software\JACS", "isActive")
+	RegWrite(newMode, "REG_DWORD", RegKeyPath, "isActive")
 	
-	isActive := RegRead("HKCU\Software\JACS", "isActive", 1)
+	isActive := RegRead(RegKeyPath, "isActive", 1)
 	activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
 	
 	CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
@@ -2155,8 +2175,8 @@ ToggleSound(*) {
 	global playSounds
 	global SoundToggleButton
 	local newMode := playSounds < 3 and playSounds + 1 or 1
-	RegWrite(newMode, "REG_DWORD", "HKCU\Software\JACS", "SoundMode")
-	playSounds := RegRead("HKCU\Software\JACS", "SoundMode", 1)
+	RegWrite(newMode, "REG_DWORD", RegKeyPath, "SoundMode")
+	playSounds := RegRead(RegKeyPath, "SoundMode", 1)
 
 	local activeText_Sound := (playSounds == 1 and "All") or (playSounds == 2 and "Less") or (playSounds == 3 and "None")
 	
@@ -2280,27 +2300,59 @@ class math {
 ; ####### Extra Functions ######## ;
 ; ################################ ;
 
+ApplyThemeToGUI(GUIObj, ThemeMap) {
+    if not GUIObj
+        return
+
+    for ctrl in GUIObj {
+        try {
+            ctrlType := ctrl.Type
+            if ThemeMap.Has("Background")
+                ctrl.Opt("Background" ThemeMap.Background)
+
+            ; Optional text color (not all controls support this, but Button/Text/Checkbox do)
+            if ThemeMap.Has("Text") && ctrl.HasProp("Text") {
+                try ctrl.SetFont("c" ThemeMap.Text)
+            }
+
+            ; Customize specific types
+            switch ctrlType {
+                case "Button":
+                    if ThemeMap.Has("Button") {
+                        ctrl.Opt("Background" ThemeMap.Button)
+                    }
+                case "Edit":
+                    if ThemeMap.Has("Edit") {
+                        ctrl.Opt("Background" ThemeMap.Edit)
+                    }
+            }
+        } catch as e {
+            ToolTip("Failed to theme: " ctrl " (" e.Message ")")
+        }
+    }
+}
+
 DownloadURL(url, filename := "") {
     local req, oStream, path, dir
 
-    ; 1. derive filename if none provided
+    ; derive filename if none provided
     path := filename ? filename : RegExReplace(url, ".*/")
     if !path
         throw Error("Cannot derive filename from URL: " url)
 
-    ; 2. ensure output directory exists
+    ; ensure output directory exists
     dir := RegExReplace(path, "\\[^\\]+$")
     if (dir && !FileExist(dir))
         DirCreate(dir)
 
-    ; 3. synchronous HTTP GET
+    ; synchronous HTTP GET
     req := ComObject("Msxml2.XMLHTTP.6.0")
     req.open("GET", url, false)
     req.send()
     if (req.status != 200)
         throw Error("Download failed, status " req.status " for " url)
 
-    ; 4. write binary to disk
+    ; write binary to disk
     oStream := ComObject("ADODB.Stream")
     oStream.Type := 1       ; adTypeBinary
     oStream.Open()
@@ -2310,7 +2362,6 @@ DownloadURL(url, filename := "") {
 
     return path
 }
-
 
 KeyExists(keyPath, data) {
     try {
@@ -2338,7 +2389,7 @@ checkForOldData(*) {
 	]
 
 	loop reg oldKey, 'R KV' {
-		if !KeyExists("HKCU\Software\JACS", A_LoopRegName) and dataSets.Has(A_LoopRegName) {
+		if !KeyExists(RegKeyPath, A_LoopRegName) and dataSets.Has(A_LoopRegName) {
 			RegWrite(RegRead(oldKey,A_LoopRegName),A_LoopRegType,A_LoopRegName)
 		}
 	}
@@ -2360,30 +2411,30 @@ createDefaultSettingsData(*) {
 	global KeyToSend
 
 	if not SettingsExists {
-        RegWrite(true, "REG_DWORD", "HKCU\Software\JACS", "Exists")
-		RegWrite(false, "REG_DWORD", "HKCU\Software\JACS", "AcceptedWarning")
-		RegWrite(1, "REG_DWORD", "HKCU\Software\JACS", "SoundMode")
-		RegWrite(1, "REG_DWORD", "HKCU\Software\JACS", "isActive")
-		RegWrite(false, "REG_DWORD", "HKCU\Software\JACS", "isInStartFolder")
-		RegWrite(false, "REG_DWORD", "HKCU\Software\JACS", "isUIHidden")
-		RegWrite(15, "REG_DWORD", "HKCU\Software\JACS", "Cooldown")
-		RegWrite(15 * 60, "REG_DWORD", "HKCU\Software\JACS", "SecondsToWait")
-		RegWrite(0, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosX")
-		RegWrite(0, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosY")
-		RegWrite("~LButton", "REG_SZ", "HKCU\Software\JACS", "KeyToSend")
+        RegWrite(true, "REG_DWORD", RegKeyPath, "Exists")
+		RegWrite(false, "REG_DWORD", RegKeyPath, "AcceptedWarning")
+		RegWrite(1, "REG_DWORD", RegKeyPath, "SoundMode")
+		RegWrite(1, "REG_DWORD", RegKeyPath, "isActive")
+		RegWrite(false, "REG_DWORD", RegKeyPath, "isInStartFolder")
+		RegWrite(false, "REG_DWORD", RegKeyPath, "isUIHidden")
+		RegWrite(15, "REG_DWORD", RegKeyPath, "Cooldown")
+		RegWrite(15 * 60, "REG_DWORD", RegKeyPath, "SecondsToWait")
+		RegWrite(0, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+		RegWrite(0, "REG_DWORD", RegKeyPath, "MainUI_PosY")
+		RegWrite("~LButton", "REG_SZ", RegKeyPath, "KeyToSend")
 	}
     
-	SettingsExists := RegRead("HKCU\Software\JACS", "Exists", false)
-	AcceptedWarning := RegRead("HKCU\Software\JACS", "AcceptedWarning", false)
-	playSounds := RegRead("HKCU\Software\JACS", "SoundMode", 1)
-	isActive := RegRead("HKCU\Software\JACS", "isActive", 1)
-	isInStartFolder := RegRead("HKCU\Software\JACS", "isInStartFolder", false)
-	isUIHidden := RegRead("HKCU\Software\JACS", "isUIHidden", false)
-	MinutesToWait := RegRead("HKCU\Software\JACS", "Cooldown", 15)
-	SecondsToWait := RegRead("HKCU\Software\JACS", "SecondsToWait", MinutesToWait * 60)
-	MainUI_PosX := RegRead("HKCU\Software\JACS", "MainUI_PosX", A_ScreenWidth / 2)
-	MainUI_PosY := RegRead("HKCU\Software\JACS", "MainUI_PosY", A_ScreenHeight / 2)
-	KeyToSend := RegRead("HKCU\Software\JACS", "KeyToSend", "LButton")
+	SettingsExists := RegRead(RegKeyPath, "Exists", false)
+	AcceptedWarning := RegRead(RegKeyPath, "AcceptedWarning", false)
+	playSounds := RegRead(RegKeyPath, "SoundMode", 1)
+	isActive := RegRead(RegKeyPath, "isActive", 1)
+	isInStartFolder := RegRead(RegKeyPath, "isInStartFolder", false)
+	isUIHidden := RegRead(RegKeyPath, "isUIHidden", false)
+	MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
+	SecondsToWait := RegRead(RegKeyPath, "SecondsToWait", MinutesToWait * 60)
+	MainUI_PosX := RegRead(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
+	MainUI_PosY := RegRead(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
+	KeyToSend := RegRead(RegKeyPath, "KeyToSend", "LButton")
 }
 
 AutoUpdate(*) {
@@ -2429,18 +2480,14 @@ setTrayIcon(icon := "") {
 	}
 }
 
-; Call this after you’ve downloaded your .ico into newIconPath
 UpdateGuiIcon(newIconPath) {
-    ; 1) Grab your GUI’s HWND
 	global hwnd
     if !hwnd
         throw Error("MainUI not available")
 
-    ; 2) Make sure the file exists
     if !FileExist(newIconPath)
         throw Error("Icon file not found: " newIconPath)
 
-    ; 3) Load the .ico from disk into an HICON
     hIcon := DllCall(
         "LoadImageW"
       , "Ptr", 0                     ; hinst
@@ -2506,10 +2553,10 @@ WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
         pos := WinGetMinMax(MainUI.Title) != -1 and WinGetPos(&X := MainUI_PosX,&Y := MainUI_PosY,,,MainUI.Title)
 		pos := {X: X, Y: Y}
 
-		RegWrite(pos.X, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosX")
-		RegWrite(pos.Y, "REG_DWORD", "HKCU\Software\JACS", "MainUI_PosY")
-        MainUI_PosX := RegReadSigned("HKCU\Software\JACS", "MainUI_PosX", A_ScreenWidth / 2)
-        MainUI_PosY := RegReadSigned("HKCU\Software\JACS", "MainUI_PosY", A_ScreenHeight / 2)
+		RegWrite(pos.X, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+		RegWrite(pos.Y, "REG_DWORD", RegKeyPath, "MainUI_PosY")
+        MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
+        MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
     }
 }
 
@@ -2945,6 +2992,206 @@ EndScriptProcess(*) {
 ; ############################## ;
 ; ########## Hotkeys ########### ;
 ; ############################## ;
+
+RegisterHotkey(hotkeyStr := "Alt+Backspace") {
+    global currentHotkey
+    try {
+        if currentHotkey
+            Hotkey(currentHotkey, "Off")
+        Hotkey(hotkeyStr, ToggleHide_Hotkey)
+        currentHotkey := hotkeyStr
+    } catch {
+        SetTimer(() => ToolTip(), -2000)
+    }
+}
+
+WaitForKeyPress(optionalGUI := "") {
+    ; Ensure InputHook can see physical keystrokes
+    SendMode("Event")
+
+    ToolTip("Press a key combo to use as your toggle key...")
+
+    ; — Create an InputHook capturing Modifiers (M) with no timeout (T0)
+    ih := InputHook("M T0")
+    ; Allow all visible keys through (text & non-text)
+    ih.VisibleText    := true
+    ih.VisibleNonText := true
+    ; Disable suppression on *all* keys so nothing is eaten
+    ih.KeyOpt("{All}", "-S")
+    ; Exclude only mouse buttons (so they don’t end the hook)
+    for btn in ["LButton","RButton","MButton","XButton1","XButton2"]
+        ih.KeyOpt("{" btn "}", "E")
+    ih.Start()
+
+    ; — Canonicalize all modifier variants to a single name
+    modKeys := Map(
+        "LControl","Ctrl", "RControl","Ctrl", "Control","Ctrl"
+      , "LShift","Shift",   "RShift","Shift",   "Shift","Shift"
+      , "LAlt","Alt",       "RAlt","Alt",       "Alt","Alt"
+      , "LWin","Win",       "RWin","Win",       "Win","Win"
+    )
+    ; The order we’ll display them in
+    orderedMods := ["Ctrl","Alt","Shift","Win"]
+
+    detectedMods := Map()  ; to record which modifiers were pressed
+    lastKey := ""
+	local_hotkey := ""
+	
+    ; — Loop until the user presses a non-modifier key
+    while true {
+        evt := ih.Wait()
+        key := evt.Key
+        if modKeys.HasKey(key) {
+            detectedMods[ modKeys[key] ] := true
+        } else {
+            lastKey := key
+            break
+        }
+    }
+    ih.Stop()
+
+    ; — If they never hit a real key, abort
+    if !lastKey {
+        ToolTip("Invalid combo. Press a non-modifier key.")
+        SetTimer(() => ToolTip(), -1500)
+        return "Set Toggle Key"
+    }
+
+    ; — Build the combo in proper order
+    comboArr := []
+    for _, modName in orderedMods {
+        if detectedMods.HasKey(modName)
+            comboArr.Push(modName)
+    }
+
+    if comboArr.Length() {
+        prefix := JoinArray(comboArr, "+")   ; uses your helper: e.g. "Ctrl+Shift"
+        local_hotkey := prefix . "+" . lastKey     ; e.g. "Ctrl+Shift+H"
+    } else {
+        local_hotkey := lastKey                    ; e.g. "H"
+    }
+
+    ; — Try to register & save it
+    try {
+        RegisterHotkey(local_hotkey)
+        WriteHotkeyToRegistry(local_hotkey)
+        ToolTip("Bound to: " local_hotkey)
+    } catch {
+        ToolTip("Invalid hotkey: " local_hotkey)
+        local_hotkey := "Set Toggle Key"
+    }
+    SetTimer(() => ToolTip(), -1500)
+
+	if optionalGUI {
+		HotkeyLabel := optionalGUI["HotkeyLabel"]
+		HotkeyLabel.Text := local_hotkey
+		HotkeyLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+	}
+
+    return local_hotkey
+}
+
+old_WaitForKeyPress(optionalGUI := "") {
+    ToolTip("Press a key combo to use as your toggle key...")
+
+    ; — Create an InputHook capturing Modifiers (M), Visible keys (V), no timeout (T0)
+    ih := InputHook("M V T0")
+    ; Exclude only the five mouse buttons so we still see Ctrl/Shift/Alt/Win
+    for btn in ["LButton","RButton","MButton","XButton1","XButton2"]
+        ih.KeyOpt("{" btn "}", "E")
+    ih.Start()
+
+    ; — Canonicalize variants of modifier names to a single label
+    modKeys := Map(
+        "LControl","Ctrl", "RControl","Ctrl", "Control","Ctrl"
+      , "LShift","Shift",   "RShift","Shift",   "Shift","Shift"
+      , "LAlt","Alt",       "RAlt","Alt",       "Alt","Alt"
+      , "LWin","Win",       "RWin","Win",       "Win","Win"
+    )
+
+    ; — Define the order in which modifiers should appear
+    orderedMods := ["Ctrl","Alt","Shift","Win"]
+
+    detectedMods := Map()  ; e.g. detectedMods["Ctrl"] := true
+    lastKey := ""
+	local_hotkey := ""
+
+    ; — Loop until a non-modifier key is pressed
+    while true {
+        evt := ih.Wait()
+        key := evt.Key
+        if modKeys.HasKey(key) {
+            detectedMods[ modKeys[key] ] := true
+        } else {
+            lastKey := key
+            break
+        }
+    }
+    ih.Stop()
+
+    ; — If no real key was pressed, bail out
+    if !lastKey {
+        ToolTip("Invalid combo. Press a non-modifier key.")
+        SetTimer(() => ToolTip(), -1500)
+        return "Set Toggle Key"
+    }
+
+    ; — Build the modifier array in the correct display order
+    comboArr := []
+    for _, modName in orderedMods
+        if detectedMods.HasKey(modName)
+            comboArr.Push(modName)
+
+    ; — Join with your helper and append the final key
+    if (comboArr.Length()) {
+        prefix := JoinArray(comboArr, "+")   ; e.g. "Ctrl+Shift"
+        local_hotkey := prefix . "+" . lastKey     ; e.g. "Ctrl+Shift+H"
+    } else {
+        local_hotkey := lastKey                    ; e.g. "H"
+    }
+
+    ; — Attempt to register & persist the hotkey
+    try {
+        RegisterHotkey(local_hotkey)
+        WriteHotkeyToRegistry(local_hotkey)
+        ToolTip("Bound to: " local_hotkey)
+    } catch {
+        ToolTip("Invalid hotkey: " local_hotkey)
+        local_hotkey := "Set Toggle Key"
+    }
+    SetTimer(() => ToolTip(), -1500)
+
+	if optionalGUI {
+		HotkeyLabel := optionalGUI["HotkeyLabel"]
+		HotkeyLabel.Text := local_hotkey
+		HotkeyLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+	}
+    return local_hotkey
+}
+
+JoinArray(arr, delim := "") {
+    out := ""
+    for i, val in arr {
+        if i > 1
+            out .= delim
+        out .= val
+    }
+    return out
+}
+
+; ###################### ;
+; ###### Registry ###### ;
+; ###################### ;
+ReadHotkeyFromRegistry(*) {
+    try return RegRead(RegKeyPath, "Hotkey")
+    catch {
+		return "Alt+Backspace" ; Default fallback
+	}
+}
+
+WriteHotkeyToRegistry(hotkey, path := RegKeyPath) {
+    RegWrite(hotkey, "REG_SZ", path, "Hotkey")
+}
 
 global Keys := Map()
 
