@@ -3074,13 +3074,12 @@ ShowPatchNotesGUI(release := "latest") {
 			; option.SetFont("s10 w300", "Consolas")
 			; option.Opt("Background" intWindowColor . " c" ControlTextColor)
 		}
-		
+
 	PatchUI.Show("Hide")
-	
+
 	local BodyBox := PatchUI.Add("Edit", "xs y+20 vPatchnotes VScroll Section ReadOnly h" (Popout_Height-PatchUI.MarginY) - addedHeight " w" Popout_Width-PatchUI.MarginX, patchNotes["body"])
 	BodyBox.SetFont("s14 w600", "Consolas")
 	BodyBox.Opt("Background555555" . " c" ControlTextColor)
-	SelectNewOption()
 
 	; Calculate center position
 	PatchUI.Show("AutoSize")
