@@ -59,7 +59,7 @@ icons := [
 ]
 
 global initializing := true
-global version := "2.5.0"
+global version := "2.5.1"
 
 RegKeyPath := "HKCU\Software\JACS"
 ;"HideGUIHotkey"
@@ -2681,8 +2681,8 @@ createDefaultDirectories(*) {
 		DirCreate(localScriptDir "\images")
 
 	if !FileExist(localScriptDir "\images\icons")
-		DownloadURL("https://github.com/WoahItsJeebus/JACS/tree/main/icons", "icons")
-
+		DirCreate(localScriptDir "\images\icons")
+	
 	for i,IconData in icons {
 		if !FileExist(IconData.Icon)
 			DownloadURL(IconData.URL, IconData.Icon)
