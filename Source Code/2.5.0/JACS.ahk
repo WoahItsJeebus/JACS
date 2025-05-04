@@ -7,7 +7,7 @@ SetTitleMatchMode 2
 DetectHiddenWindows(true)
 A_HotkeyInterval := 0
 A_MaxHotkeysPerInterval := 1000
-A_LocalAppData := EnvGet("LOCALAPPDATA")
+global A_LocalAppData := EnvGet("LOCALAPPDATA")
 localScriptDir := A_LocalAppData "\JACS\"
 
 IconsFolder := localScriptDir "images\icons\"
@@ -152,7 +152,7 @@ global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFF
 global intProgressBarColor := (!blnLightMode and updateTheme) and "757575" or "dddddd"
 global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
 global linkColor := (!blnLightMode and updateTheme) and "99c3ff" or "4787e7"
-global currentTheme := blnLightMode
+global currentTheme := RegRead(RegKeyPath, "SelectedTheme", "DarkMode")
 global lastTheme := currentTheme
 
 global wasActiveWindow := false
@@ -324,11 +324,11 @@ createWarningUI(requested := false) {
 
 	; Colors
 	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
-	global intWindowColor := (!blnLightMode and updateTheme) and "404040" or "EEEEEE"
-	global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFFF"
-	global intProgressBarColor := (!blnLightMode and updateTheme) and "757575" or "dddddd"
-	global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
-	global linkColor := (!blnLightMode and updateTheme) and "99c3ff" or "4787e7"
+	global intWindowColor
+	global intControlColor
+	global intProgressBarColor
+	global ControlTextColor
+	global linkColor
 
 	; Controls
 	local warning_Text_Header := MainUI_Warning.Add("Text","h30 w" UI_Width_Warning/2-MainUI_Warning.MarginX*2, "WARNING")
@@ -490,14 +490,12 @@ CreateGui(*) {
 
 	; Colors
 	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
-	global intWindowColor := (!blnLightMode and updateTheme) and "404040" or "EEEEEE"
-	global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFFF"
-	global intProgressBarColor := (!blnLightMode and updateTheme) and "757575" or "dddddd"
-	global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
-	global linkColor := (!blnLightMode and updateTheme) and "99c3ff" or "4787e7"
+	global intWindowColor
+	global intControlColor
+	global intProgressBarColor
+	global ControlTextColor
+	global linkColor
 
-	global IntValue := Integer(0)
-	
 	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
 
@@ -615,7 +613,7 @@ CreateGui(*) {
 		"CheckDeviceTheme", Map(
 			"Function", CheckDeviceTheme.Bind(),
 			"Interval", 50,
-			"Disabled", true
+			"Disabled", false
 		),
 		"SaveMainUIPosition", Map(
 			"Function", SaveMainUIPosition.Bind(),
@@ -638,24 +636,9 @@ CreateGui(*) {
 			"Disabled", true
 		)
 	)
-	DarkTheme := Map(
-		"TextColor", "dddddd",
-		"LinkColor", "99c3ff",
-		"Background", "0x303030",
-		"FontFace", "Consolas",
-		"FontSize", 12,
-		"ProgressBarColor" , "5c5cd8",
-	)
-	LightTheme := Map(
-		"TextColor", "Black",
-		"LinkColor", "4787e7",
-		"Background", "0xFFFFFF",
-		"FontFace", "Consolas",
-		"FontSize", 12,
-		"ProgressBarColor" , "54cc54",
-	)	
 	
-	ApplyThemeToGui(MainUI, DarkTheme)
+	
+	; ApplyThemeToGui(MainUI, DarkTheme)
 
 	setTrayIcon(icons[isActive].Icon)
 	Sleep(500)
@@ -799,6 +782,7 @@ CreateWindowSettingsGUI(*) {
 	global MainUI_PosX
 	global MainUI_PosY
 	global currentHotkey
+	global RegKeyPath
 
 	; local HotkeyLabel := ""
 	; local HotkeyButton := ""
@@ -807,12 +791,15 @@ CreateWindowSettingsGUI(*) {
 	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
 	local ProcessDropdown := ""
+	local themeDropdown := ""
+	local themeLabel := ""
 
 	; Colors
+	global currentTheme := RegRead(RegKeyPath, "SelectedTheme", "DarkMode")
 	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
-	global intWindowColor := (!blnLightMode and updateTheme) and "404040" or "EEEEEE"
-	global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFFF"
-	global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
+	global intWindowColor
+	global intControlColor
+	global ControlTextColor
 
 	CloseSettingsUI(*)
 	{
@@ -863,6 +850,34 @@ CreateWindowSettingsGUI(*) {
 	; 	HotkeyLabel.Text := WaitForKeyPress(WindowSettingsUI)
 	; ))
 
+	themeLabel := WindowSettingsUI.Add("Text", "xm Center vThemeLabel h20 w" Popout_Width/1.05, "Theme: " . currentTheme)
+	themeLabel.SetFont("s12 w500", "Consolas")
+	themeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	themeNames := GetThemeListFromINI(localScriptDir "\themes.ini")
+	themeDropdown := WindowSettingsUI.Add("DropDownList", "xm R10 vThemeChoice h40 w" Popout_Width/1.05, themeNames)
+	; Get index of the current theme name
+	for index, name in themeNames {
+		if (name = currentTheme) {
+			themeDropdown.Choose(index)
+			break
+		}
+	}
+
+	themeDropdown.OnEvent("Change", OnThemeDropdownChange)
+	themeDropdown.SetFont("s12 w500", "Consolas")
+
+	OnThemeDropdownChange(*) {
+		selectedTheme := themeDropdown.Text
+		RegWrite(selectedTheme, "REG_SZ", RegKeyPath, "SelectedTheme")
+		currentTheme := selectedTheme
+		themeLabel.Text := "Theme: " . selectedTheme
+
+		updateGlobalThemeVariables(selectedTheme)
+		updateGUITheme(WindowSettingsUI)
+		updateGUITheme(MainUI)
+	}
+	
 	OnProcessDropdownChange(*) {
 		local selectedExe := ProcessDropdown.Text  ; get the selected process name
 		ProcessLabel.Text := "Searching for: " . selectedExe
@@ -934,6 +949,8 @@ CreateWindowSettingsGUI(*) {
 		"AlwaysOnTopButton", "This button controls whether the script's UI stays as the top-most window on the screen.",
 		"SoundToggleButton", "This button controls the sounds that play when the auto-clicker sequence triggers, when no target window is found, etc.`n`nAll: All sounds play. This includes a 3 second countdown via audible beeps, a higher pitched trigger tone indicating the sequence has begun after the aforementioned countdown, and an audible indication the script launched.`n`nLess: Only the single higher pitched indicator and indicator on script launch are played.`n`nNone: No indication sounds are played.",
 		"ProcessDropdown", "Pick a process from this dropdown list and the script will look for the first active process matching the name of the one selected.",
+		"ThemeLabel", "This dropdown allows you to select a theme from the list of themes available in the themes.ini file. The selected theme will be applied to all user interfaces.",
+		"ThemeChoice", "This dropdown allows you to select a theme from the list of themes available in the themes.ini file. The selected theme will be applied to all user interfaces.",
 	)
 	Descriptions["ProcessLabel"] := Descriptions["ProcessDropdown"]
 	
@@ -966,14 +983,13 @@ CreateWindowSettingsGUI(*) {
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
+	updateGUITheme(WindowSettingsUI)
 	WindowSettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
 
 	SetTimer(mouseHoverDescription,50)
 }
 
 CreateClickerSettingsGUI(*) {
-	
-
 	; UI Settings
 	local PixelOffset := 10
 	local Popout_Width := 400
@@ -1026,9 +1042,9 @@ CreateClickerSettingsGUI(*) {
 
 	; Colors
 	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
-	global intWindowColor := (!blnLightMode and updateTheme) and "404040" or "EEEEEE"
-	global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFFF"
-	global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
+	global intWindowColor
+	global intControlColor
+	global ControlTextColor
 	local testBoxColor := "666666"
 
 	CloseSettingsUI(*)
@@ -1320,6 +1336,7 @@ CreateClickerSettingsGUI(*) {
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
+	updateGUITheme(SettingsUI)
 	SettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
 
 	SetTimer(mouseHoverDescription,50)
@@ -1356,9 +1373,9 @@ CreateScriptSettingsGUI(*) {
 
 	; Colors
 	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
-	global intWindowColor := (!blnLightMode and updateTheme) and "404040" or "EEEEEE"
-	global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFFF"
-	global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
+	global intWindowColor
+	global intControlColor
+	global ControlTextColor
 
 	local functions := Map(
 		"EditButton", Map(
@@ -1504,6 +1521,7 @@ CreateScriptSettingsGUI(*) {
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
+	updateGUITheme(ScriptSettingsUI)
 	ScriptSettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
 
 	SetTimer(mouseHoverDescription,50)
@@ -1528,7 +1546,7 @@ CreateExtrasGUI(*) {
 	if ExtrasUI
 		ExtrasUI.Destroy()
 
-	ExtrasUI := Gui(AlwaysOnTopActive)
+	ExtrasUI := Gui(AlwaysOnTopActive " +Owner" . MainUI.Hwnd)
 	ExtrasUI.BackColor := intWindowColor
 	ExtrasUI.Title := "Extras"
 	ExtrasUI.OnEvent("Close", killGUI)
@@ -1722,64 +1740,19 @@ ToggleAOT(*) {
 }
 
 CheckDeviceTheme(*) {
+	global currentTheme
 	global MainUI
-	global EditButton
-	global ExitButton
-	global CoreToggleButton
-	global SoundToggleButton
-	global ReloadButton
-	global EditCooldownButton
-	global EditorButton
-	global ScriptDirButton
+	global SettingsUI
+	global WindowSettingsUI
+	global ExtrasUI
+	global ScriptSettingsUI
 
-	global WaitProgress
-	global WaitTimerLabel
-	global ElapsedTimeLabel
-	global MinutesToWait
-	global CreditsLink
-	global ResetCooldownButton
-
-	; Colors
-	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
-	global intWindowColor := (!blnLightMode and updateTheme) and "404040" or "EEEEEE"
-	global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFFF"
-	global intProgressBarColor := (!blnLightMode and updateTheme) and "757575" or "dddddd"
-	global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
-	global linkColor := (!blnLightMode and updateTheme) and "99c3ff" or "4787e7"
-	
-	global currentTheme := blnLightMode
-	global lastTheme
-	
-	if lastTheme != currentTheme and MainUI
-	{
-		lastTheme := currentTheme
-		MainUI.BackColor := intWindowColor
-		
-		EditButton.Opt("Background" intWindowColor)
-		ExitButton.Opt("Background" intWindowColor)
-		CoreToggleButton.Opt("Background" intWindowColor)
-		SoundToggleButton.Opt("Background" intWindowColor)
-		ReloadButton.Opt("Background" intWindowColor)
-		ScriptDirButton.Opt("Background" intWindowColor)
-		EditorButton.Opt("Background" intWindowColor)
-		EditCooldownButton.Opt("Background" intWindowColor)
-		WaitProgress.Opt("Background" intProgressBarColor)
-		ResetCooldownButton.Opt("Background" intWindowColor)
-		WaitTimerLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-		ElapsedTimeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-		
-		EditButton.Redraw()
-		ExitButton.Redraw()
-		CoreToggleButton.Redraw()
-		SoundToggleButton.Redraw()
-		ReloadButton.Redraw()
-		ScriptDirButton.Redraw()
-		EditorButton.Redraw()
-		WaitProgress.Redraw()
-		WaitTimerLabel.Redraw()
-		ElapsedTimeLabel.Redraw()
-		ResetCooldownButton.Redraw()
-		CreditsLink.Opt("c" linkColor)
+	if currentTheme {
+		updateGUITheme(MainUI)
+		updateGUITheme(SettingsUI)
+		updateGUITheme(WindowSettingsUI)
+		updateGUITheme(ExtrasUI)
+		updateGUITheme(ScriptSettingsUI)
 	}
 }
 
@@ -2209,6 +2182,123 @@ ToggleSound(*) {
 ; ################################ ;
 ; ####### Window Functions ####### ;
 ; ################################ ;
+GetThemeListFromINI(filePath) {
+    themeList := []
+    Loop Read, filePath {
+        if RegExMatch(A_LoopReadLine, "^\[(.+?)\]$", &match)
+            themeList.Push(match[1])
+    }
+    return themeList
+}
+
+updateGlobalThemeVariables(themeName := "") {
+			; Get theme from ini file
+			global currentTheme := themeName or RegRead(RegKeyPath, "SelectedTheme", "DarkMode")
+			local themeData := LoadThemeFromINI(currentTheme)
+
+			global intWindowColor := themeData["Background"]
+			global intControlColor := themeData["Background"]
+			global intProgressBarColor := themeData["ProgressBarBackground"]
+			global ControlTextColor := themeData["ButtonTextColor"]
+			global linkColor := themeData["LinkColor"]	
+}
+
+updateGUITheme(GUIObject) {
+	if not GUIObject
+		return
+
+    global currentTheme
+    theme := LoadThemeFromINI(currentTheme)
+    try ApplyThemeToGui(GUIObject, theme)
+}
+
+LoadThemeFromINI(themeName, filePath := localScriptDir "\themes.ini") {
+    local keys := [
+		"Background",
+		"TextColor",
+		"ButtonTextColor",
+		"FontFace",
+		"FontSize",
+		"ProgressBarBackground",
+		"ProgressBarColor",
+		"LinkColor"
+	]
+
+    theme := Map()
+    for _, key in keys
+        theme[key] := IniRead(filePath, themeName, key, "")
+    return theme
+}
+
+ApplyThemeToGui(guiObj, themeMap) {
+    if !guiObj
+        return
+
+    if guiObj.BackColor != themeMap["Background"]
+        guiObj.BackColor := themeMap["Background"]
+
+    for _, ctrl in guiObj {
+        ; Skip the main header except for background update
+        if ctrl.Name = "MainHeader" {
+            ctrl.Opt("Background" themeMap["Background"])
+            continue
+        }
+
+        try {
+            ; Determine foreground and background colors
+            fg := "", bg := "", opt := ""
+            switch ctrl.Type {
+                case "Button":
+                    fg := themeMap["ButtonTextColor"]
+                    bg := themeMap["Background"]
+                    opt := "Background" bg " c" fg
+                case "Edit", "Text":
+                    fg := themeMap["TextColor"]
+                    bg := themeMap["Background"]
+                    opt := "Background" bg " c" fg
+                case "Progress":
+                    fg := themeMap["ProgressBarColor"]
+                    bg := themeMap["ProgressBarBackground"]
+                    opt := "Background" bg " Smooth c" fg
+                case "Link":
+                    fg := themeMap["LinkColor"]
+                    opt := "c" fg
+            }
+
+            ; Compare to cached values
+            needsUpdate := false
+            if ctrl.Type = "Progress" || ctrl.Type = "Link" {
+                ; Progress and Link don't use BG in same way
+                if !ctrl.HasOwnProp("_lastFG") || ctrl._lastFG != fg
+                    needsUpdate := true
+            } else {
+                if !ctrl.HasOwnProp("_lastFG") || !ctrl.HasOwnProp("_lastBG")
+                    || ctrl._lastFG != fg || ctrl._lastBG != bg
+                    needsUpdate := true
+            }
+
+            ; Apply if needed
+            if needsUpdate {
+                ctrl.Opt(opt)
+                ctrl._lastFG := fg
+                if bg
+                    ctrl._lastBG := bg
+            }
+        }
+    }
+}
+
+
+SaveThemeToINI(themeMap, section, filePath) {
+    for key, value in themeMap
+        IniWrite(value, filePath, section, key)
+}
+
+WinSetRedraw(hWnd) {
+	; Redraw the window to apply the new theme
+	; This is a workaround for the issue where the theme doesn't apply immediately
+    DllCall("RedrawWindow", "ptr", hWnd, "ptr", 0, "ptr", 0, "uint", 0x85)
+}
 
 isMouseClickingOnTargetWindow(key?, override*) {
 	global initializing
@@ -2319,38 +2409,6 @@ class math {
 ; ####### Extra Functions ######## ;
 ; ################################ ;
 
-ApplyThemeToGui(guiObj, themeMap) {
-    if not guiObj
-        return
-
-	guiObj.BackColor := themeMap["Background"]
-	guiObj.TextColor := themeMap["TextColor"]
-    for _,ctrl in guiObj {
-		if ctrl.Name != "MainHeader" {
-			try {
-				switch ctrl.Type {
-					case "Button":
-						ctrl.Opt("Background" themeMap["Background"] " c" themeMap["TextColor"])
-					case "Edit":
-						ctrl.Opt("Background" themeMap["Background"] " c" themeMap["TextColor"])
-					case "Text":
-						ctrl.Opt("Background" themeMap["Background"] " c" themeMap["TextColor"])
-					case "Progress":
-						ctrl.Opt("Background" themeMap["Background"] " Smooth c" themeMap["ProgressBarColor"])
-					case "Link":
-						ctrl.Opt("c" themeMap["LinkColor"])
-				}
-			}
-		}
-		else
-			ctrl.Opt("Background" themeMap["Background"])
-    }
-}
-
-WinSetRedraw(hWnd) {
-    DllCall("RedrawWindow", "ptr", hWnd, "ptr", 0, "ptr", 0, "uint", 0x85)
-}
-
 DownloadURL(url, filename := "") {
     local req, oStream, path, dir
 
@@ -2383,13 +2441,25 @@ DownloadURL(url, filename := "") {
 }
 
 KeyExists(keyPath, data) {
-    try {
-		RegRead(keyPath, data)
-
-        return true
-    } catch {
-        return false
-    }
+    ; check if the path is an ini file or a registry key
+	if (SubStr(keyPath, 1, 4) == "HKCU" or SubStr(keyPath, 1, 4) == "HKLM") {
+		try {
+			RegRead(keyPath, data)
+	
+			return true
+		} catch {
+			return false
+		}
+	}
+	else if (SubStr(keyPath, 1, 4) == "INI") {
+		try {
+			IniRead(keyPath, data)
+	
+			return true
+		} catch {
+			return false
+		}
+	}
 }
 
 checkForOldData(*) {
@@ -2428,6 +2498,7 @@ createDefaultSettingsData(*) {
 	global MainUI_PosX
 	global MainUI_PosY
 	global KeyToSend
+	global currentTheme
 
 	if not SettingsExists {
         RegWrite(true, "REG_DWORD", RegKeyPath, "Exists")
@@ -2441,6 +2512,7 @@ createDefaultSettingsData(*) {
 		RegWrite(0, "REG_DWORD", RegKeyPath, "MainUI_PosX")
 		RegWrite(0, "REG_DWORD", RegKeyPath, "MainUI_PosY")
 		RegWrite("~LButton", "REG_SZ", RegKeyPath, "KeyToSend")
+		RegWrite("DarkMode", "REG_SZ", RegKeyPath, "SelectedTheme")
 	}
     
 	SettingsExists := RegRead(RegKeyPath, "Exists", false)
@@ -2454,6 +2526,63 @@ createDefaultSettingsData(*) {
 	MainUI_PosX := RegRead(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
 	MainUI_PosY := RegRead(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
 	KeyToSend := RegRead(RegKeyPath, "KeyToSend", "LButton")
+	currentTheme := RegRead(RegKeyPath, "SelectedTheme", "DarkMode")
+
+	; Create ini file if it doesn't exist for dark, light, and custom themes
+	dataSets := Map(
+		"DarkMode", Map(
+			"TextColor", "dddddd",
+			"ButtonTextColor", "000000",
+			"LinkColor", "99c3ff",
+			"Background", "303030",
+			"ProgressBarColor", "5c5cd8",
+			"ProgressBarBackground", "404040"
+		),
+	
+		"LightMode", Map(
+			"TextColor", "Black",
+			"ButtonTextColor", "000000",
+			"LinkColor", "4787e7",
+			"Background", "EEEEEE",
+			"ProgressBarColor", "54cc54",
+			"ProgressBarBackground", "FFFFFF"
+		),
+	
+		"Custom", Map(
+			"TextColor", "000000",
+			"ButtonTextColor", "000000",
+			"LinkColor", "4787e7",
+			"Background", "FFFFFF",
+			"ProgressBarColor", "54cc54",
+			"ProgressBarBackground", "FFFFFF"
+		)
+	)
+
+	themeFile := ""
+	if !FileExist(localScriptDir "\themes.ini") {
+		themeFile := localScriptDir "\themes.ini"
+		SaveThemeToINI(dataSets["DarkMode"], "DarkMode", themeFile)
+		SaveThemeToINI(dataSets["LightMode"], "LightMode", themeFile)
+		SaveThemeToINI(dataSets["Custom"], "Custom", themeFile)
+	} else
+		themeFile := localScriptDir "\themes.ini"
+
+	for themeName, themeData in dataSets {
+		local cachedTheme := LoadThemeFromINI(themeName, themeFile)
+		if !cachedTheme {
+			SaveThemeToINI(themeData, themeName, themeFile)
+			cachedTheme := LoadThemeFromINI(themeName, themeFile)
+		}
+		
+		for dataName, dataValue in themeData {
+			existingValue := IniRead(themeFile, themeName, dataName, "__MISSING__")
+			if !existingValue or existingValue == "__MISSING__" {
+				IniWrite(dataValue, themeFile, themeName, dataName)
+			}
+		}
+	}
+
+	updateGlobalThemeVariables(currentTheme)
 }
 
 AutoUpdate(*) {
