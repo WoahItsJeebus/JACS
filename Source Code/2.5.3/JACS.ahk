@@ -926,7 +926,7 @@ CreateWindowSettingsGUI(*) {
 	}
 	
 	; Add a label to display the currently selected process
-    local ProcessLabel := WindowSettingsUI.Add("Text", "xm Center h20 vProcessLabel w" Popout_Width/1.05, "Searching for: " SelectedProcessExe)
+    local ProcessLabel := WindowSettingsUI.Add("Text", "xm y+10 Center h20 vProcessLabel w" Popout_Width/1.05, "Searching for: " SelectedProcessExe)
     ProcessLabel.SetFont("s12", "Consolas")
 	ProcessLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 
@@ -2229,25 +2229,25 @@ updateGlobalThemeVariables(themeName := "") {
 		)
 	)
 
-	themeFile := ""
 	if !FileExist(localScriptDir "\themes.ini") {
 		themeFile := localScriptDir "\themes.ini"
-		SaveThemeToINI(dataSets["DarkMode"], "DarkMode", themeFile)
-		SaveThemeToINI(dataSets["LightMode"], "LightMode", themeFile)
-		SaveThemeToINI(dataSets["Custom"], "Custom", themeFile)
+		SaveThemeToINI(dataSets["DarkMode"], "DarkMode")
+		SaveThemeToINI(dataSets["LightMode"], "LightMode")
+		SaveThemeToINI(dataSets["Custom"], "Custom")
 	} else
 		themeFile := localScriptDir "\themes.ini"
 
 	for themeName, themeData in dataSets {
-		local cachedTheme := LoadThemeFromINI(themeName, themeFile)
+		local cachedTheme := LoadThemeFromINI(themeName)
 		if !cachedTheme {
 			SaveThemeToINI(themeData, themeName, themeFile)
-			cachedTheme := LoadThemeFromINI(themeName, themeFile)
+			cachedTheme := LoadThemeFromINI(themeName)
 		}
 		
 		for dataName, dataValue in themeData {
 			existingValue := IniRead(themeFile, themeName, dataName, "__MISSING__")
-			if !existingValue or existingValue == "__MISSING__" {
+			
+			if existingValue == "__MISSING__" {
 				IniWrite(dataValue, themeFile, themeName, dataName)
 			}
 		}
@@ -2358,7 +2358,9 @@ ApplyThemeToGui(guiObj, themeMap) {
 }
 
 
-SaveThemeToINI(themeMap, section, filePath) {
+SaveThemeToINI(themeMap, section, filePath := localScriptDir "\themes.ini") {
+	if !themeMap || !section || !filePath
+		return
     for key, value in themeMap
         IniWrite(value, filePath, section, key)
 }
