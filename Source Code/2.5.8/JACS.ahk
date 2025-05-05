@@ -558,7 +558,7 @@ CreateGui(*) {
 	
 		LoadNewTip()
 		ScrollTimer := SetTimer(() => ScrollTip(), refreshRate * 0.215)
-	}	
+	}
 
 	LoadTipsFromAHKFile() {
 		global tips := []
@@ -580,10 +580,6 @@ CreateGui(*) {
 				if RegExMatch(line, 's)^`"(.*?)`"', &tipMatch)
 					tips.Push(tipMatch[1])
 			}
-		} else {
-			ToolTip("Failed to parse tips block from file.")
-			Sleep(2000)
-			ToolTip
 		}
 	}	
 	
@@ -595,7 +591,8 @@ CreateGui(*) {
 			LoadTipsFromAHKFile()
 			UpdateAllTipBoxes()
 		} catch as e {
-			ToolTip("Failed to update tips: " e.Message)
+			LoadTipsFromAHKFile()
+			UpdateAllTipBoxes()
 		}
 	}
 	
