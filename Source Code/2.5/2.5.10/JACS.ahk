@@ -820,7 +820,6 @@ CreateGui(*) {
 	AddTipBox()
 }
 
-; Create the sidebar tab list
 createSideBar(*) {
 	global MainUI, intWindowColor, UI_Height
 
@@ -1271,7 +1270,14 @@ CreateClickerSettingsGUI(*) {
 			local targetSeconds := (SecondsToWait > 0) and Round(Mod(SecondsToWait, 60),0) or 0
 			local targetFormattedTime := Format("{:02}:{:02}", MinutesToWait, targetSeconds)
 			local mins_suffix := SecondsToWait > 60 and " minutes" or SecondsToWait == 60 and " minute" or SecondsToWait < 60 and " seconds"
-	
+			
+			val := ctrlObj.Value ; Slider's raw value in seconds
+			remainder := Mod(val, 60)
+			if (remainder <= 3 || remainder >= 57) {
+				val := Round(val / 60) * 60
+				ctrlObj.Value := val ; snap to the nearest minute
+			}
+
 			RegWrite(ctrlObj.Value/60, "REG_DWORD", RegKeyPath, "Cooldown")
 			RegWrite(math.clamp(Round(ctrlObj.Value,2),(minCooldown > 0 and minCooldown/60) or 0,900),"REG_DWORD", RegKeyPath, "SecondsToWait")
 			MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
