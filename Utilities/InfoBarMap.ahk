@@ -13,4 +13,5 @@ tips := [
     "JACS is designed to be user-friendly and easy to use!",
     "JACS is the first AutoHotkey script I've ever created!",
     "If you encounter any bugs, please report them on GitHub!",
+    "10:41PM CST - 10/22/2023 - These bits of info became remotely fetched!",
 ]

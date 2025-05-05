@@ -588,7 +588,7 @@ CreateGui(*) {
 	}	
 	
 	UpdateTipsFile(*) {
-		url := "https://raw.githubusercontent.com/WoahItsJeebus/JACS/main/tips.ahk"
+		url := "https://raw.githubusercontent.com/WoahItsJeebus/JACS/main/Utilities/InfoBarMap.ahk"
 		localPath := A_LocalAppData "\JACS\tips.ahk"
 		try {
 			DownloadURL(url, localPath)
