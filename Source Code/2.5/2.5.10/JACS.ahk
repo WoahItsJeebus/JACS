@@ -2,7 +2,7 @@
 #SingleInstance Force
 
 global initializing := true
-global version := "2.5.9"
+global version := "2.5.10"
 
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
@@ -2069,7 +2069,10 @@ OpenScriptDir(*) {
 }
 
 SelectEditor(*) {
+	global RegKeyPath
 	Editor := FileSelect(2,, "Select your editor", "Programs (*.exe)")
+	if !Editor
+		return
 	RegWrite Format('"{1}" "%L"', Editor), "REG_SZ", "HKCR\AutoHotkeyScript\Shell\Edit\Command"
 }
 
