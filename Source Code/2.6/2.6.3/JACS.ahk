@@ -2,7 +2,7 @@
 #SingleInstance Force
 
 global initializing := true
-global version := "2.6.2"
+global version := "2.6.3"
 
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
@@ -2420,7 +2420,6 @@ MonitorGetNumberFromPoint(x, y) {
     return MonitorGetIndexFromHandle(hMonitor)
 }
 
-; Helper: Gets the monitor index based on its handle
 MonitorGetIndexFromHandle(hMonitor) {
     SysGetMonitorCount := SysGet(80)
     Loop SysGetMonitorCount {
@@ -2456,6 +2455,7 @@ updateGlobalThemeVariables(themeName := "") {
 			"ProgressBarBackground", "404040",
 			"DescriptionBoxColor", "404040",
 			"DescriptionBoxTextColor", "FFFFFF",
+			"HeaderColor", "ff4840",
 		),
 	
 		"LightMode", Map(
@@ -2467,6 +2467,7 @@ updateGlobalThemeVariables(themeName := "") {
 			"ProgressBarBackground", "FFFFFF",
 			"DescriptionBoxColor", "CCCCCC",
 			"DescriptionBoxTextColor", "000000",
+			"HeaderColor", "ff4840",
 		),
 	
 		"Custom", Map(
@@ -2478,6 +2479,7 @@ updateGlobalThemeVariables(themeName := "") {
 			"ProgressBarBackground", "FFFFFF",
 			"DescriptionBoxColor", "AAAAAA",
 			"DescriptionBoxTextColor", "000000",
+			"HeaderColor", "ff4840",
 		)
 	)
 
@@ -2534,7 +2536,10 @@ LoadThemeFromINI(themeName, filePath := localScriptDir "\themes.ini") {
 		"FontSize",
 		"ProgressBarBackground",
 		"ProgressBarColor",
-		"LinkColor"
+		"LinkColor",
+		"DescriptionBoxColor",
+		"DescriptionBoxTextColor",
+		"HeaderColor",
 	]
 
     theme := Map()
@@ -2555,7 +2560,7 @@ ApplyThemeToGui(guiObj, themeMap) {
     for _, ctrl in guiObj {
         ; Skip the main header except for background update
         if ctrl.Name = "MainHeader" {
-            ctrl.Opt("Background" themeMap["Background"])
+            ctrl.Opt("Background" themeMap["Background"] " c" themeMap["HeaderColor"])
             continue
         }
 
