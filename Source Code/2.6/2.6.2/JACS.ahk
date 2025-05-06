@@ -2,7 +2,7 @@
 #SingleInstance Force
 
 global initializing := true
-global version := "2.6.0"
+global version := "2.6.2"
 
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
@@ -192,7 +192,7 @@ global Credits_TargetColor := GetRandomColor(200, 255)
 global Credits_ColorChangeRate := 5 ; (higher = faster)
 
 ; Keys
-global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "LButton")
+global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 
 OnExit(EndScriptProcess)
 
@@ -559,7 +559,6 @@ CreateGui(*) {
 		)
 	
 		LoadNewTip()
-		ScrollTimer := SetTimer(() => ScrollTip(), refreshRate * 0.215)
 	}
 
 	LoadTipsFromAHKFile() {
@@ -699,6 +698,7 @@ CreateGui(*) {
 	; ###################################################################### ;
 	
 	; ToggleHideUI(false)
+	refreshRate := GetRefreshRate_Alt() or 60
 	updateUIVisibility()
 	ClampMainUIPos()
 	SaveMainUIPosition()
@@ -740,24 +740,32 @@ CreateGui(*) {
 			"Function", ColorizeCredits.Bind(CreditsLink),
 			"Interval", 50,
 			"Disabled", true
-		)
+		),
+		"ScrollTip", Map(
+			"Function", ScrollTip.Bind(),
+			"Interval", refreshRate * 0.215,
+			"Disabled", false
+		),
 	)
 	
 	
 	; ApplyThemeToGui(MainUI, DarkTheme)
-	CheckDeviceTheme()
 	setTrayIcon(icons[isActive].Icon)
+
+	CheckDeviceTheme()
+	AddTipBox()
 
 	; Run loop functions
 	for FuncName, Data in loopFunctions
-		if not Data["Disabled"]
-        	SetTimer(Data["Function"], Data["Interval"])
-
-	refreshRate := GetRefreshRate_Alt()
+		if not Data["Disabled"] {
+			if FuncName == "ScrollTip"
+				Sleep(100)
+			SetTimer(Data["Function"], Data["Interval"])
+		}
+	
 	; debugNotif(refreshRate = 0 ? "Failed to retrieve refresh rate" : "Refresh Rate: " refreshRate " Hz",,,5)
-
+	
 	initializing := false
-	AddTipBox()
 }
 
 ; Create the main buttons and controls
@@ -767,8 +775,8 @@ createMainButtons(*) {
 	local UI_Margin_Width := UI_Width-MainUI.MarginX
 	local UI_Margin_Height := UI_Height-MainUI.MarginY
 
-	local Header := MainUI.Add("Text","x" ICON_WIDTH " y+" UI_Height*0.02 " Section Center vMainHeader cff4840 h" HeaderHeight " w" UI_Width,"Jeebus' Auto-Clicker — V" version)
-	Header.SetFont("s22 w600", "Ink Free")
+	local Header := MainUI.Add("Text","x" ICON_WIDTH " y+" UI_Height*0.001 " Section Center vMainHeader cff4840 h" HeaderHeight " w" UI_Width,"Jeebus' Auto-Clicker — V" version)
+	Header.SetFont("s18 w600", "Ink Free")
 
 	; ########################
 	; 		  Buttons
@@ -1312,13 +1320,12 @@ CreateClickerSettingsGUI(*) {
 		}
 
 		if ctrlObj.Name == "SendKey" {
-			local possibleKeys := ["LButton", "RButton", "MButton"]
-			local newValue := KeyToSend == "LButton" ? "RButton" : "LButton"
+			local newValue := KeyToSend == "~LButton" ? "~RButton" : "~LButton"
 			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", newValue)
-			KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "LButton")
+			KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 			
 			if SendKeyButton
-				SendKeyButton.Text := "Send Key: " . (KeyToSend == "LButton" ? "Left Click" : "Right Click")
+				SendKeyButton.Text := "Send Key: " . (KeyToSend == "~LButton" ? "Left Click" : "Right Click")
 		}
 	}
 
@@ -2413,7 +2420,6 @@ MonitorGetNumberFromPoint(x, y) {
     return MonitorGetIndexFromHandle(hMonitor)
 }
 
-; Helper: Gets the monitor index based on its handle
 MonitorGetIndexFromHandle(hMonitor) {
     SysGetMonitorCount := SysGet(80)
     Loop SysGetMonitorCount {
@@ -2449,6 +2455,7 @@ updateGlobalThemeVariables(themeName := "") {
 			"ProgressBarBackground", "404040",
 			"DescriptionBoxColor", "404040",
 			"DescriptionBoxTextColor", "FFFFFF",
+			"HeaderColor", "ff4840",
 		),
 	
 		"LightMode", Map(
@@ -2460,6 +2467,7 @@ updateGlobalThemeVariables(themeName := "") {
 			"ProgressBarBackground", "FFFFFF",
 			"DescriptionBoxColor", "CCCCCC",
 			"DescriptionBoxTextColor", "000000",
+			"HeaderColor", "ff4840",
 		),
 	
 		"Custom", Map(
@@ -2471,6 +2479,7 @@ updateGlobalThemeVariables(themeName := "") {
 			"ProgressBarBackground", "FFFFFF",
 			"DescriptionBoxColor", "AAAAAA",
 			"DescriptionBoxTextColor", "000000",
+			"HeaderColor", "ff4840",
 		)
 	)
 
@@ -2527,7 +2536,10 @@ LoadThemeFromINI(themeName, filePath := localScriptDir "\themes.ini") {
 		"FontSize",
 		"ProgressBarBackground",
 		"ProgressBarColor",
-		"LinkColor"
+		"LinkColor",
+		"DescriptionBoxColor",
+		"DescriptionBoxTextColor",
+		"HeaderColor",
 	]
 
     theme := Map()
@@ -2548,7 +2560,7 @@ ApplyThemeToGui(guiObj, themeMap) {
     for _, ctrl in guiObj {
         ; Skip the main header except for background update
         if ctrl.Name = "MainHeader" {
-            ctrl.Opt("Background" themeMap["Background"])
+            ctrl.Opt("Background" themeMap["Background"] " c" themeMap["HeaderColor"])
             continue
         }
 

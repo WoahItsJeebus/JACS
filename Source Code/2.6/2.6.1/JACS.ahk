@@ -2,7 +2,7 @@
 #SingleInstance Force
 
 global initializing := true
-global version := "2.6.0"
+global version := "2.6.1"
 
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
@@ -192,7 +192,7 @@ global Credits_TargetColor := GetRandomColor(200, 255)
 global Credits_ColorChangeRate := 5 ; (higher = faster)
 
 ; Keys
-global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "LButton")
+global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 
 OnExit(EndScriptProcess)
 
@@ -1312,13 +1312,12 @@ CreateClickerSettingsGUI(*) {
 		}
 
 		if ctrlObj.Name == "SendKey" {
-			local possibleKeys := ["LButton", "RButton", "MButton"]
-			local newValue := KeyToSend == "LButton" ? "RButton" : "LButton"
+			local newValue := KeyToSend == "~LButton" ? "~RButton" : "~LButton"
 			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", newValue)
-			KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "LButton")
+			KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 			
 			if SendKeyButton
-				SendKeyButton.Text := "Send Key: " . (KeyToSend == "LButton" ? "Left Click" : "Right Click")
+				SendKeyButton.Text := "Send Key: " . (KeyToSend == "~LButton" ? "Left Click" : "Right Click")
 		}
 	}
 
