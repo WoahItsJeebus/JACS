@@ -20,7 +20,7 @@ global InactiveIcon := localScriptDir "images\icons\Inactive.ico"
 global SearchingIcon := localScriptDir "images\icons\Searching.ico"
 global initializingIcon := localScriptDir "images\icons\Initializing.ico"
 
-global doDebug := true
+global doDebug := false
 global debugKey := "^F12"
 
 if doDebug {
