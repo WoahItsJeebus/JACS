@@ -34,5 +34,5 @@ ___
 </a></p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/b24a5b01-60a1-4fab-871f-082caf1a9aaf">
+  <img src="https://github.com/user-attachments/assets/cde61684-5c17-4ec0-9573-66fd5c4dbb46">
 </p>
