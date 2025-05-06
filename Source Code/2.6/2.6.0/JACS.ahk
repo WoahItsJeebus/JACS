@@ -2,7 +2,7 @@
 #SingleInstance Force
 
 global initializing := true
-global version := "2.6.0"
+global version := "2.6.2"
 
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
@@ -20,7 +20,7 @@ global InactiveIcon := localScriptDir "images\icons\Inactive.ico"
 global SearchingIcon := localScriptDir "images\icons\Searching.ico"
 global initializingIcon := localScriptDir "images\icons\Initializing.ico"
 
-global doDebug := true
+global doDebug := false
 global debugKey := "^F12"
 
 if doDebug {
@@ -192,7 +192,7 @@ global Credits_TargetColor := GetRandomColor(200, 255)
 global Credits_ColorChangeRate := 5 ; (higher = faster)
 
 ; Keys
-global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "LButton")
+global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 
 OnExit(EndScriptProcess)
 
@@ -745,9 +745,11 @@ CreateGui(*) {
 	
 	
 	; ApplyThemeToGui(MainUI, DarkTheme)
-	CheckDeviceTheme()
 	setTrayIcon(icons[isActive].Icon)
 
+	Sleep(30)
+	CheckDeviceTheme()
+	AddTipBox()
 	; Run loop functions
 	for FuncName, Data in loopFunctions
 		if not Data["Disabled"]
@@ -757,7 +759,6 @@ CreateGui(*) {
 	; debugNotif(refreshRate = 0 ? "Failed to retrieve refresh rate" : "Refresh Rate: " refreshRate " Hz",,,5)
 
 	initializing := false
-	AddTipBox()
 }
 
 ; Create the main buttons and controls
@@ -1312,13 +1313,12 @@ CreateClickerSettingsGUI(*) {
 		}
 
 		if ctrlObj.Name == "SendKey" {
-			local possibleKeys := ["LButton", "RButton", "MButton"]
-			local newValue := KeyToSend == "LButton" ? "RButton" : "LButton"
+			local newValue := KeyToSend == "~LButton" ? "~RButton" : "~LButton"
 			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", newValue)
-			KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "LButton")
+			KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 			
 			if SendKeyButton
-				SendKeyButton.Text := "Send Key: " . (KeyToSend == "LButton" ? "Left Click" : "Right Click")
+				SendKeyButton.Text := "Send Key: " . (KeyToSend == "~LButton" ? "Left Click" : "Right Click")
 		}
 	}
 
