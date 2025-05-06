@@ -20,6 +20,13 @@ global InactiveIcon := localScriptDir "images\icons\Inactive.ico"
 global SearchingIcon := localScriptDir "images\icons\Searching.ico"
 global initializingIcon := localScriptDir "images\icons\Initializing.ico"
 
+global doDebug := true
+global debugKey := "^F12"
+
+if doDebug {
+	Hotkey(debugKey, ReloadScript, "On")
+}
+
 sidebarData := [
 	{
 		Icon: "🪟",
@@ -64,6 +71,11 @@ icons := [
 
 ;"HideGUIHotkey"
 
+global ICON_SPACING  := 20
+global ICON_WIDTH    := 40
+global BUTTON_HEIGHT := 40
+global HeaderHeight := 30
+
 global SelectedProcessExe := GetSelectedProcessName()
 global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
 global currentIcon := icons[4].Icon
@@ -107,10 +119,8 @@ global MainUI_Monitor := monitorNum
 global isUIHidden := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isUIHidden", false, "bool")
 global MainUI_Disabled := false
 
-global UI_Width := "500"
+global UI_Width := "400"
 global UI_Height := "300"
-global Min_UI_Width := "500"
-global Min_UI_Height := "300"
 
 global tips := []  ; Will be populated from tips.ahk or defaults if it fails
 
@@ -457,10 +467,8 @@ createWarningUI(requested := false) {
 
 CreateGui(*) {
 	global version
-	global UI_Width := "500"
-	global UI_Height := "300"
-	global Min_UI_Width := "500"
-	global Min_UI_Height := "300"
+	global UI_Width
+	global UI_Height
 	
 	global MainUI_PosX
 	global MainUI_PosY
@@ -533,14 +541,14 @@ CreateGui(*) {
 	global TipTimer := ""          ; Controls when a new tip is picked
 	global ScrollTimer := ""       ; Controls horizontal scroll updates
 	global TipScrollData := Map()  ; Keeps track of label & offset per GUI
-	global tipHeight := 24         ; Height of the tip box
+	global tipHeight := 20         ; Height of the tip box
 	global tips
 	
-	local dummy := MainUI.Add("Text", "Section x+0 w" UI_Margin_Width " h" tipHeight " 0x200 BackgroundTrans")  ; dummy container
+	local dummy := MainUI.Add("Text", "Section w" UI_Margin_Width " h" tipHeight " 0x200 BackgroundTrans")  ; dummy container
 	
 	AddTipBox() {
-		tipBox := MainUI.Add("Text", "x+0 w" UI_Margin_Width " h" tipHeight " BackgroundTrans vTipBox", "")
-		tipBox.SetFont("s10 w550 Italic", "Consolas")
+		tipBox := MainUI.Add("Text", "w" UI_Margin_Width " h" tipHeight " BackgroundTrans vTipBox", "")
+		tipBox.SetFont("s" tipHeight/2 " w550 Italic", "Consolas")
 	
 		TipScrollData[MainUI] := Map(
 			"Ctrl", tipBox,
@@ -678,8 +686,8 @@ CreateGui(*) {
 			data["Offset"] := offset
 	}
 	
-	createSideBar()
 	createMainButtons()
+	createSideBar()
 
 	; LinkUseDefaultColor(VersionHyperlink)
 	
@@ -755,22 +763,22 @@ CreateGui(*) {
 ; Create the main buttons and controls
 createMainButtons(*) {
 	global MainUI, intWindowColor, intControlColor, ControlTextColor, linkColor, ProfilesDir
-	global UI_Width, UI_Height
+	global UI_Width, UI_Height, ICON_WIDTH, ICON_SPACING, BUTTON_HEIGHT, HeaderHeight
 	local UI_Margin_Width := UI_Width-MainUI.MarginX
 	local UI_Margin_Height := UI_Height-MainUI.MarginY
-	
-	local Header := MainUI.Add("Text", "x+m y+-340 Section Center vMainHeader cff4840 h70 w" UI_Margin_Width,"`nJeebus' Auto-Clicker — V" version)
+
+	local Header := MainUI.Add("Text","x" ICON_WIDTH " y+" UI_Height*0.02 " Section Center vMainHeader cff4840 h" HeaderHeight " w" UI_Width,"Jeebus' Auto-Clicker — V" version)
 	Header.SetFont("s22 w600", "Ink Free")
-	
+
 	; ########################
 	; 		  Buttons
 	; ########################
 	; local activeText_Core := isActive and "Enabled" or "Disabled"
 	global activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
-	global CoreToggleButton := MainUI.Add("Button", "xs h40 w" UI_Margin_Width/1.4, "Auto-Clicker: " activeText_Core)
+	global CoreToggleButton := MainUI.Add("Button", "xs+" ICON_WIDTH + UI_Width/6 " h30 w" (UI_Margin_Width*0.75)-ICON_WIDTH, "Auto-Clicker: " activeText_Core)
 	CoreToggleButton.OnEvent("Click", ToggleCore)
 	CoreToggleButton.Opt("Background" intWindowColor)
-	CoreToggleButton.Move((UI_Width-(UI_Margin_Width / 1.333)))
+	; CoreToggleButton.Move(UI_Width-((UI_Margin_Width * 0.6) + ICON_WIDTH))
 	CoreToggleButton.SetFont("s12 w500", "Consolas")
 
 	; ##############################
@@ -787,18 +795,18 @@ createMainButtons(*) {
 	; ###############################
 	
 	; Reset Cooldown
-	global ResetCooldownButton := MainUI.Add("Button", "xs+182 h30 w" UI_Margin_Width/4, "Reset")
+	global ResetCooldownButton := MainUI.Add("Button", "x" (ICON_WIDTH*2) + UI_Margin_Width*0.375 " h30 w" UI_Margin_Width/4, "Reset")
 	ResetCooldownButton.OnEvent("Click", ResetCooldown)
 	ResetCooldownButton.SetFont("s12 w500", "Consolas")
 	ResetCooldownButton.Opt("Background" intWindowColor)
 
-	SeparationLine := MainUI.Add("Text", "xs 0x7 h1 w" UI_Margin_Width) ; Separation Space
+	SeparationLine := MainUI.Add("Text", "x" ICON_WIDTH*2 " 0x7 h1 w" UI_Margin_Width) ; Separation Space
 	SeparationLine.BackColor := "0x8"
 	
 	; Progress Bar
-	global WaitTimerLabel := MainUI.Add("Text", "xs Section Center 0x300 0xC00 h20 w" UI_Margin_Width, "0%")
-	global WaitProgress := MainUI.Add("Progress", "xs Section Center h40 w" UI_Margin_Width)
-	global ElapsedTimeLabel := MainUI.Add("Text", "xs Section Center 0x300 0xC00 h20 w" UI_Margin_Width, "00:00 / 0 min")
+	global WaitTimerLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " Center 0x300 0xC00 h20 w" UI_Margin_Width, "0%")
+	global WaitProgress := MainUI.Add("Progress", "x" ICON_WIDTH*2 " Center h40 w" UI_Margin_Width)
+	global ElapsedTimeLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " Center 0x300 0xC00 h20 w" UI_Margin_Width, "00:00 / 0 min")
 	ElapsedTimeLabel.SetFont("s18 w500", "Consolas")
 	WaitTimerLabel.SetFont("s18 w500", "Consolas")
 	
@@ -807,9 +815,11 @@ createMainButtons(*) {
 	WaitProgress.Opt("Background" intProgressBarColor)
 
 	; Credits
-	global CreditsLink := MainUI.Add("Link", "xs c" linkColor . " Section Left h20 w" UI_Margin_Width/2, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
+	global CreditsLink := MainUI.Add("Link","c" linkColor . " Left h20 w" UI_Margin_Width, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
 	CreditsLink.SetFont("s12 w700", "Ink Free")
 	CreditsLink.Opt("c" linkColor)
+	; Move credits link to bottom of UI_Height
+	CreditsLink.Move(ICON_WIDTH*2, UI_Height + (MainUI.MarginY - 20))
 	LinkUseDefaultColor(CreditsLink)
 
 	; Version
@@ -822,22 +832,20 @@ createMainButtons(*) {
 createSideBar(*) {
 	global MainUI, intWindowColor, UI_Height, ProfilesDir
 
-	ICON_SPACING  := 45
-	ICON_WIDTH    := 45
-	BUTTON_HEIGHT := 40
+	global ICON_SPACING, ICON_WIDTH, BUTTON_HEIGHT, HeaderHeight, tipHeight
 
 	if not MainUI
 		return
 
 	; Sidebar background
-	local sidebarBackground := MainUI.Add("Text", "x+m w" ICON_WIDTH " h" UI_Height * 1.25 " Background" intWindowColor)
+	local sidebarBackground := MainUI.Add("Text","Section vSideBarBackground w" ICON_WIDTH " h" UI_Height-HeaderHeight-tipHeight " Background" intWindowColor)
 	
 	; Store buttons and tooltip data for hover tracking
 	global iconButtons := []
 
 	for idx, icon in sidebarData {
-		y := ((idx - 1) * (BUTTON_HEIGHT + ICON_SPACING)) + ICON_SPACING
-		btn := MainUI.Add("Button", "x10 y" y " vIconButton" . idx . " w" ICON_WIDTH " h" BUTTON_HEIGHT " Background" intWindowColor, icon.Icon)
+		y := ((idx - 1) * (BUTTON_HEIGHT + ICON_SPACING)) + ICON_SPACING + HeaderHeight + tipHeight + 10
+		btn := MainUI.Add("Button", "xs-" ICON_WIDTH*1.5 " y" y " vIconButton" . idx . " w" ICON_WIDTH " h" BUTTON_HEIGHT " Background" intWindowColor, icon.Icon)
 		
 		btn.OnEvent("Click", icon.Function)  ; Assign specific function
 		iconButtons.Push({control: btn, tooltip: icon.Tooltip})
@@ -1289,6 +1297,7 @@ CreateClickerSettingsGUI(*) {
 			
 			if CooldownLabel
 				CooldownLabel.Text := "Cooldown: " targetFormattedTime . mins_suffix
+			UpdateTimerLabel()
 		}
 	}
 
@@ -2041,10 +2050,11 @@ UpdateTimerLabel(*) {
 	global ElapsedTimeLabel
 	global CurrentElapsedTime
 	global lastUpdateTime := isActive > 1 and lastUpdateTime or A_TickCount
-	
+	global WaitProgress
+	global WaitTimerLabel
+
 	; Calculate and update progress bar
     secondsPassed := (A_TickCount - lastUpdateTime) / 1000  ; Convert ms to seconds
-
     finalProgress := Round((MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100, 0)
 	
 	; Calculate and format CurrentElapsedTime as MM:SS
@@ -2060,6 +2070,13 @@ UpdateTimerLabel(*) {
 	
 	try if ElapsedTimeLabel.Text != CurrentElapsedTime " / " . targetFormattedTime . " " mins_suffix
 			ElapsedTimeLabel.Text := CurrentElapsedTime " / " . targetFormattedTime . " " mins_suffix
+
+	if WaitProgress and WaitProgress.Value != finalProgress
+		WaitProgress.Value := finalProgress
+
+    local finalText  := Round(WaitProgress.Value, 0) "%"
+	if WaitTimerLabel and WaitTimerLabel.Text != finalText
+		WaitTimerLabel.Text := finalText
 }
 
 OpenScriptDir(*) {
@@ -2196,8 +2213,6 @@ RunCore(*) {
 	global MinutesToWait
 	global SecondsToWait
 	global WaitProgress
-	global WaitTimerLabel
-	global CurrentElapsedTime
 
 	global wasActiveWindow
 	global doMouseLock
@@ -2261,28 +2276,21 @@ RunCore(*) {
 		if doMouseLock
 			Sleep(25)
 
-		; Unblock Inputs
-		BlockInput("Off")
-		BlockInput("Default")
-		BlockInput("MouseMoveOff")
-
 		if (MinutesToWait > 0 or SecondsToWait > 0)
 			WaitProgress.Value := 0
 
 		lastUpdateTime := A_TickCount
 	}
 	
+	; Unblock Inputs
+	BlockInput("Off")
+	BlockInput("Default")
+	BlockInput("MouseMoveOff")
+
 	; Calculate and progress visuals
-    secondsPassed := (A_TickCount - lastUpdateTime) / 1000  ; Convert ms to seconds
-    finalProgress := (MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100
+    ; secondsPassed := (A_TickCount - lastUpdateTime) / 1000  ; Convert ms to seconds
+    ; finalProgress := (MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100
 	UpdateTimerLabel()
-
-    ; Update UI elements for progress
-    WaitProgress.Value := finalProgress
-
-    local finalText  := Round(WaitProgress.Value, 0) "%"
-	if WaitTimerLabel and WaitTimerLabel.Text != finalText
-		WaitTimerLabel.Text := finalText
 }
 
 ; ################################ ;
