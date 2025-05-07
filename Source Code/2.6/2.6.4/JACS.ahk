@@ -1,5 +1,6 @@
 #Requires AutoHotkey >=2.0.19 64-bit
 #SingleInstance Force
+Persistent
 
 global initializing := true
 global version := "2.6.4"
@@ -10,9 +11,12 @@ SetTitleMatchMode 2
 DetectHiddenWindows(true)
 A_HotkeyInterval := 0
 A_MaxHotkeysPerInterval := 1000
+
 global A_LocalAppData := EnvGet("LOCALAPPDATA")
 global localScriptDir := A_LocalAppData "\JACS\"
 global ProfilesDir := localScriptDir "Profiles.ini"
+global Utilities := localScriptDir "Utilities"
+global TweenService := Utilities "\TweenService.ahk"
 
 global IconsFolder := localScriptDir "images\icons\"
 global ActiveIcon := localScriptDir "images\icons\Active.ico"
@@ -124,7 +128,8 @@ global UI_Height := "300"
 
 global tips := []  ; Will be populated from tips.ahk or defaults if it fails
 
-; Core UI Buttons
+; Core UI
+global MainUI_BG := ""
 global EditButton := ""
 global ExitButton := ""
 global OpenMouseSettingsButton := ""
@@ -200,9 +205,39 @@ OnMessage(0x0112, WM_SYSCOMMAND_Handler)
 DeleteTrayTabs()
 
 A_TrayMenu.Insert("&Reload Script", "Fix GUI", MenuHandler)  ; Creates a new menu item.
-Persistent
 
 GetUpdate()
+
+global UtilitiesModule := ""
+importModuleFromGitHubUtilities() {
+	global Utilities
+	global UtilitiesModule
+	global URL_SCRIPT
+	
+	if !FileExist(Utilities)
+		DirCreate(Utilities)
+	
+	if !FileExist(UtilitiesModule) {
+		try DownloadURL(URL_SCRIPT, UtilitiesModule)
+	} else {
+		FileDelete(UtilitiesModule)
+		Sleep(2000) ; Wait for the file to be deleted
+		try DownloadURL(URL_SCRIPT, UtilitiesModule)
+	}
+
+	if !FileExist(UtilitiesModule) {
+		debugNotif("Failed to download Utilities.ahk", "Error")
+		return
+	}
+	
+	; Load the module
+	try {
+		if !FileExist(UtilitiesModule)
+			#Include %UtilitiesModule%
+	} catch Error as e {
+		debugNotif("Failed to load Utilities.ahk: " e.Message, "Error")
+	}
+}
 
 MenuHandler(ItemName, ItemPos, MyMenu) {
 	global MainUI_PosX
@@ -491,6 +526,7 @@ CreateGui(*) {
 
 	global MainUI_PosX
 	global MainUI_PosY
+	global MainUI_BG
 
 	global WaitProgress
 	global WaitTimerLabel
@@ -529,7 +565,7 @@ CreateGui(*) {
 	; Create new UI
 	global MainUI := Gui(AOTStatus . " +OwnDialogs") ; Create UI window
 	global hwnd := MainUI.Hwnd
-	MainUI.BackColor := intWindowColor
+	MainUI.BackColor := MainUI_BG
 	MainUI.OnEvent("Close", CloseApp)
 	MainUI.Title := "Jeebus' Auto-Clicker"
 	MainUI.SetFont("s14 w500", "Courier New")
@@ -718,7 +754,7 @@ CreateGui(*) {
 	local loopFunctions := Map(
 		"CheckDeviceTheme", Map(
 			"Function", CheckDeviceTheme.Bind(),
-			"Interval", 50,
+			"Interval", 250,
 			"Disabled", false
 		),
 		"SaveMainUIPosition", Map(
@@ -947,8 +983,8 @@ CheckOpenMenus(*) {
 CreateWindowSettingsGUI(*) {
 	; UI Settings
 	local PixelOffset := 10
-	local Popout_Width := 400
-	local Popout_Height := 600
+	local Popout_Width := 320
+	local Popout_Height := 400
 	local labelOffset := 50
 	local sliderOffset := 2.5
 	
@@ -1541,8 +1577,8 @@ CreateScriptSettingsGUI(*) {
 
 	; UI Settings
 	local PixelOffset := 10
-	local Popout_Width := 400
-	local Popout_Height := 600
+	local Popout_Width := 300
+	local Popout_Height := 350
 	local labelOffset := 50
 	local sliderOffset := 2.5
 
@@ -1554,6 +1590,7 @@ CreateScriptSettingsGUI(*) {
 	global EditorButton
 	global ScriptDirButton
 	global AddToBootupFolderButton
+	local DescriptionBox := ""
 	
 	; Global Save Data
 	global ScriptSettingsUI
@@ -1578,6 +1615,7 @@ CreateScriptSettingsGUI(*) {
 	local buttonFontWeight := 500
 	local buttonFont := "Consolas"
 	local Popout_Margin_Width := ""
+	local Popout_Margin_Height := ""
 
 	local addToStartUp_Text := isInStartFolder and "Remove from Windows startup folder" or "Add to Windows startup folder"
 	local functions := Map(
@@ -1610,19 +1648,38 @@ CreateScriptSettingsGUI(*) {
 	if ScriptSettingsUI
 		return CloseSettingsUI()
 
-	ScriptSettingsUI := Gui(AOTStatus)
+	ScriptSettingsUI := Gui(AOTStatus " +Owner" . MainUI.Hwnd)
 	ScriptSettingsUI.Title := "Script Settings"
 	ScriptSettingsUI.BackColor := intWindowColor
-	Popout_Margin_Width := Popout_Width-ScriptSettingsUI.MarginX
+	Popout_Margin_Width := Popout_Width-(ScriptSettingsUI.MarginX*2)
+	Popout_Margin_Height := Popout_Height-(ScriptSettingsUI.MarginY*2)
 
-	EditButton := 				 ScriptSettingsUI.Add("Button","h" buttonHeight " w" Popout_Margin_Width/1.5 " vEditButton Section Center", "View Script")
-	ReloadButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width/1.5 " vReloadButton xs", "Relaunch Script")
-	ExitButton := 				ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width/1.5 " vExitButton xs", "Close Script")
-	EditorButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width/1.5 " vEditorSelector xs", "Select Script Editor")
-	ScriptDirButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width/1.5 " vScriptDir xs", "Open File Location")
-	AddToBootupFolderButton :=  ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width/1.5 " vStartupToggle xs", addToStartUp_Text)
-	DescriptionBox := 	   ScriptSettingsUI.Add("Text", "h" . Popout_Height/4 . " w" Popout_Margin_Width/1.5 " xm Section Left vDescriptionBox")
+	EditButton := 				ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vEditButton Section Center", "View Script")
+	ReloadButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vReloadButton xs", "Relaunch Script")
+	ExitButton := 				ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vExitButton xs", "Close Script")
+	EditorButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vEditorSelector xs", "Select Script Editor")
+	ScriptDirButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vScriptDir xs", "Open File Location")
+	AddToBootupFolderButton :=  ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vStartupToggle xs", addToStartUp_Text)
+
+	evenlySpaceControls() {
+		local buttonCount := 0
+		local remainingHeight := 0
+
+		for i, control in ScriptSettingsUI {
+			if control.Name != "Section" {
+				buttonCount++
+				local totalHeight := buttonHeight * buttonCount + (ScriptSettingsUI.MarginY * (buttonCount - 1)) + PixelOffset * 2
+				remainingHeight := Popout_Margin_Height - totalHeight + (ScriptSettingsUI.MarginY * 2)
+
+				control.Y := (remainingHeight / 2) + (buttonHeight * (i - 1)) + ScriptSettingsUI.MarginY * i + PixelOffset
+			}
+		}
+		
+		DescriptionBox := ScriptSettingsUI.Add("Text","xm h" remainingHeight " w" Popout_Margin_Width " xm Section Left vDescriptionBox")
+	}
 	
+	evenlySpaceControls()
+
 	ScriptSettingsUI.OnEvent("Close", CloseSettingsUI)
 	EditButton.OnEvent("Click", functions["EditButton"]["Function"])
 	ReloadButton.OnEvent("Click", ReloadScript)
@@ -1646,7 +1703,6 @@ CreateScriptSettingsGUI(*) {
 	ScriptDirButton.Opt("Background" intWindowColor)
 	AddToBootupFolderButton.Opt("Background" intWindowColor)
 	DescriptionBox.Opt("+Border Background" intWindowColor " c" ControlTextColor)
-	ScriptSettingsUI.Opt("+Owner" . MainUI.Hwnd)
 	
 	; Hover Descriptions
 	local Descriptions := Map(
@@ -1694,14 +1750,16 @@ CreateScriptSettingsGUI(*) {
 		}
 	}
 
-	; Calculate center position
-	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
-	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
-	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
-
 	updateGUITheme(ScriptSettingsUI)
-	ScriptSettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
+	ScriptSettingsUI.Show("AutoSize Hide")
 
+	; Get full window position and size (including title bar)
+	WinGetPos(&MainX, &MainY, &MainW, &MainH, MainUI.Hwnd)
+
+	CenterX := MainX + (MainW // 2) - (Popout_Width // 2)
+	CenterY := MainY + (MainH // 2) - (Popout_Height // 2)
+
+	ScriptSettingsUI.Show("X" . CenterX . " Y" . CenterY . " w" . Popout_Width . " h" . Popout_Height)
 	SetTimer(mouseHoverDescription,50)
 }
 
@@ -1714,12 +1772,19 @@ CreateExtrasGUI(*) {
 	global MainUI_PosX
 	global MainUI_PosY
 
-	local Popout_Width := 400
-	local Popout_Height := 600
+	local DescriptionBox := ""
+
 	local createNewWarningButton := ""
-	local ExtrasUI_Width := 400
-	local ExtrasUI_Height := 400
-	
+	local Popout_Width := 300
+	local Popout_Height := 350
+	local Popout_Margin_Height := 0
+	local Popout_Margin_Width := 0
+	local PixelOffset := 10
+	local buttonHeight := 23
+	local buttonFontSize := 10
+	local buttonFontWeight := 500
+	local buttonFont := "Consolas"
+
 	; Create new UI
 	global ExtrasUI
 
@@ -1730,55 +1795,34 @@ CreateExtrasGUI(*) {
 	ExtrasUI.BackColor := intWindowColor
 	ExtrasUI.Title := "Extras"
 	ExtrasUI.OnEvent("Close", killGUI)
-	ExtrasUI.SetFont("s14 w500", "Courier New")
-	
-	local UI_Margin_Width := ExtrasUI.MarginX*2
-	local UI_Margin_Height := ExtrasUI.MarginY*1.25
-	local buttonHeight := (ExtrasUI_Height/8) - UI_Margin_Height
-	local buttonWidth := ExtrasUI_Width - UI_Margin_Width
+	ExtrasUI.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
+	Popout_Margin_Width := Popout_Width-(ExtrasUI.MarginX*2)
+	Popout_Margin_Height := Popout_Height-(ExtrasUI.MarginY*2)
 
-	; Discord
-	local DiscordLink := ExtrasUI.Add("Button", "vDiscordLink Center h" . buttonHeight . " w" . Popout_Width/1.05, 'Join the Discord!')
-	DiscordLink.SetFont("s12 w500", "Consolas")
-	DiscordLink.OnEvent("Click", DiscordLink_Click)
+	local DiscordLink := ExtrasUI.Add("Button", "vDiscordLink Center h" . buttonHeight . " w" . Popout_Margin_Width, 'Join the Discord!')
+	local GitHubLink := ExtrasUI.Add("Button", "vGithubLink Center h" . buttonHeight . " w" . Popout_Margin_Width, "GitHub Repository")
+	local OpenWarningLabel := ExtrasUI.Add("Button", "vOpenWarning Center h" . buttonHeight . " w" . Popout_Margin_Width, "View Warning Agreement")
+	local ViewPatchnotes := ExtrasUI.Add("Button", "vViewPatchnotes Center h" . buttonHeight . " w" . Popout_Margin_Width, "Patchnotes")
+	
+	evenlySpaceControls()
+
 	DiscordLink.Opt("Background" intWindowColor)
-	DiscordLink_Click(*) {
-		Run("https://discord.gg/w8QdNsYmbr")
-	}
-	
-	; GitHub
-	local GitHubLink := ExtrasUI.Add("Button", "vGithubLink Center h" . buttonHeight . " w" . Popout_Width/1.05, "GitHub Repository")
-	GitHubLink.SetFont("s12 w500", "Consolas")
-	GitHubLink.OnEvent("Click", GitHubLink_Click)
 	GitHubLink.Opt("Background" intWindowColor)
-	GitHubLink_Click(*) {
-		Run("https://github.com/WoahItsJeebus/JACS/")
-	}
-
-	; Warning UI
-	local OpenWarningLabel := ExtrasUI.Add("Button", "vOpenWarning Center h" . buttonHeight . " w" . Popout_Width/1.05, "View Warning Agreement")
-	OpenWarningLabel.SetFont("s12 w500", "Consolas")
-	OpenWarningLabel.OnEvent("Click", (*) => createWarningUI(true))
 	OpenWarningLabel.Opt("Background" intWindowColor)
-
-	; Patchnotes UI
-	local ViewPatchnotes := ExtrasUI.Add("Button", "vViewPatchnotes Center h" . buttonHeight . " w" . Popout_Width/1.05, "Patchnotes")
-	ViewPatchnotes.SetFont("s12 w500", "Consolas")
-	ViewPatchnotes.OnEvent("Click", ShowPatchnotes)
 	ViewPatchnotes.Opt("Background" intWindowColor)
+	DescriptionBox.Opt("+Border Background" intWindowColor . " c" ControlTextColor)
 
-	ShowPatchnotes(*) {
-		ShowPatchNotesGUI()
-	}
+	DiscordLink.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
+	GitHubLink.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
+	OpenWarningLabel.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
+	ViewPatchnotes.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
+	DescriptionBox.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
 
-	; ############################### ;
-	; ############################### ;
-	; Slider Description Box
-	local testBoxColor := "666666"
-	DescriptionBox := ExtrasUI.Add("Text", "xm Section Left vDescriptionBox h" . Popout_Height/4 . " w" Popout_Width/1.05)
-	DescriptionBox.SetFont("s10 w700", "Consolas")
-	DescriptionBox.Opt("+Border Background" (testBoxColor or intWindowColor) . " c" ControlTextColor)
-	
+	DiscordLink.OnEvent("Click", (*) => Run("https://discord.gg/w8QdNsYmbr"))
+	GitHubLink.OnEvent("Click", (*) => Run("https://github.com/WoahItsJeebus/JACS/"))
+	OpenWarningLabel.OnEvent("Click", (*) => createWarningUI(true))
+	ViewPatchnotes.OnEvent("Click", ShowPatchnotes)
+
 	; Hover Descriptions
 	local Descriptions := Map(
 		; Sliders
@@ -1789,6 +1833,23 @@ CreateExtrasGUI(*) {
 		"ViewPatchnotes","Fetch the patchnotes for the latest version of the script posted to Github!",
 	)
 	
+	evenlySpaceControls() {
+		local buttonCount := 0
+		local remainingHeight := 0
+
+		for i, control in ExtrasUI {
+			if control.Name != "Section" {
+				buttonCount++
+				local totalHeight := buttonHeight * buttonCount + (ExtrasUI.MarginY * (buttonCount - 1)) + PixelOffset * 2
+				remainingHeight := Popout_Margin_Height - totalHeight + (ExtrasUI.MarginY * 2)
+
+				control.Y := (remainingHeight / 2) + (buttonHeight * (i - 1)) + ExtrasUI.MarginY * i + PixelOffset
+			}
+		}
+		
+		DescriptionBox := ExtrasUI.Add("Text","xm h" remainingHeight " w" Popout_Margin_Width " xm Section Left vDescriptionBox")
+	}
+
 	updateDescriptionBox(newText := "") {
 		DescriptionBox.Text := newText
 	}
@@ -1824,16 +1885,30 @@ CreateExtrasGUI(*) {
 
 	; Calculate center position
 	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
-	CenterX := MainX + (MainW / 2) - (ExtrasUI_Width / 2)
-	CenterY := MainY + (MainH / 2) - (ExtrasUI_Height / 2)
+	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
+	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
-	ExtrasUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . ExtrasUI_Width . " h" . ExtrasUI_Height)
+	ExtrasUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . " h" . Popout_Height)
 
 	killGUI(*) {
 		if ExtrasUI
 			ExtrasUI := ""
 		WinActivate(MainUI.Title)
 	}
+}
+
+GuiGetClientHeight(guiObj) {
+	; Gets only the height of the usable area inside the GUI
+	local x, y, w, h := 0
+	if !guiObj
+		return 0
+	
+	try guiObj.GetClientPos(&x, &y, &w, &h)
+	return h
+}
+
+ShowPatchnotes(*) {
+	ShowPatchNotesGUI()
 }
 
 ToggleHideUI(newstate) {
@@ -2018,14 +2093,13 @@ SaveMainUIPosition(*) {
 	global ProfilesDir
 	global SelectedProcessExe
 
-	if not MainUI
+	if !MainUI or MainUI == ""
 		return
 
 	local winState := WinGetMinMax(MainUI.Title) ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
 	if winState == -1
 		return
 
-	global MainUI
     WinGetPos(&x, &y,,,"ahk_id" MainUI.Hwnd)
     monitorNum := MonitorGetNumberFromPoint(x, y)
 
@@ -2375,27 +2449,139 @@ ToggleSound(*) {
 	return
 }
 
-; ################################ ;
-; ######## .ini Functions ######## ;
-
-IniSectionExists(fileOrLines, sectionName) {
-    if Type(fileOrLines) = "String" {
-        if !FileExist(fileOrLines)
-            return false
-        lines := StrSplit(FileRead(fileOrLines), "`n")
-    } else if Type(fileOrLines) = "Array" {
-        lines := fileOrLines
-    } else {
-        throw ValueError("Invalid type for IniSectionExists(): must be a file path or array of lines.")
-    }
-
-    sectionHeader := "[" sectionName "]"
-    for line in lines {
-        if Trim(line) = sectionHeader
-            return true
-    }
-    return false
+IsFunc(obj) {
+	if (obj is Func) {
+		return true
+	} else if (obj is String) {
+		; Check if the string is a valid function name
+		return IsFunc(obj)
+	} else {
+		return false
+	}
 }
+
+ShowNotification("This is a test notification", Map(
+	"Type", "yesno",
+	"OnYes", (*) => MsgBox("You clicked Yes!"),
+	"OnNo", (*) => MsgBox("You clicked No!"),
+	"Duration", 5000,
+))
+
+SetRoundedCorners(hwnd, radius := 12) {
+    WinGetPos(&x,&y, &w, &h, hwnd)
+    hRgn := DllCall("CreateRoundRectRgn"
+        , "int", 0, "int", 0
+        , "int", w, "int", h
+        , "int", radius, "int", radius
+        , "ptr")
+    
+    DllCall("SetWindowRgn"
+        , "ptr", hwnd
+        , "ptr", hRgn
+        , "int", true)
+}
+
+ShowNotification(message, config := Map()) {
+    static NotiGui
+
+	MonitorGetWorkArea(1, &monLeft, &monTop, &monRight, &monBottom)
+	screenW := monRight - monLeft
+	screenH := monBottom - monTop
+
+
+	local popupWidth := 350
+	local popupHeight := 120
+	local finalX := monRight - popupWidth - 25
+	local startX := monRight
+	local y := monTop + ((screenH - popupHeight) // 2)
+
+    if IsSet(NotiGui)
+        AnimateFadeOut(NotiGui.Hwnd)
+
+    local type     := config.Has("Type")     ? config["Type"]     : "info"
+    local duration := config.Has("Duration") ? config["Duration"] : 4000
+    local onYes    := config.Has("OnYes")    ? config["OnYes"]    : ""
+    local onNo     := config.Has("OnNo")     ? config["OnNo"]     : ""
+
+    NotiGui := Gui("+AlwaysOnTop -SysMenu -Caption +ToolWindow +LastFound")
+	; Adjust border stroke thickness
+	
+	NotiGui.MarginX := 20
+	NotiGui.MarginY := 20
+	popup_Margin_Width := popupWidth - (NotiGui.MarginX * 2)
+	popup_Margin_Height := popupHeight - (NotiGui.MarginY * 2)
+
+    NotiGui.BackColor := "505050"
+    NotiGui.SetFont("s10 cWhite", "Segoe UI")
+    NotiGui.Add("Text", "w" popup_Margin_Width " h" popup_Margin_Height, message)
+
+    btnYes := ""
+	btnNo := ""
+    if (type = "yesno") {
+        btnYes := NotiGui.Add("Button", "w" popup_Margin_Width/2, "Yes")
+        btnNo  := NotiGui.Add("Button", "x+m w" popup_Margin_Width/2, "No")
+
+        btnYes.OnEvent("Click", (*) => (
+            AnimateFadeOut(NotiGui.Hwnd),
+            IsFunc(onYes) ? onYes.Call() : ""
+        ))
+        btnNo.OnEvent("Click", (*) => (
+            AnimateFadeOut(NotiGui.Hwnd),
+            IsFunc(onNo) ? onNo.Call() : ""
+        ))
+    }
+
+	; get center of screen
+	WinGetPos(,, &displayW, &displayH, "A")
+	; Show NotiGui in the center of the screen
+	NotiGui.Show("X" . (displayW - popupWidth - 25) . " Y" . ((displayH - popupHeight) // 2) . " w" popupWidth " h" popupHeight)
+	
+	WinSetTransparent(0, NotiGui.Hwnd) ; Start fully transparent
+	NotiGui.Show("NoActivate")  ; Show non-activating
+	SetRoundedCorners(NotiGui.Hwnd, 16)
+	AnimateFadeIn(NotiGui.Hwnd)
+	
+    if (type != "yesno") {
+        SetTimer(() => AnimateFadeOut(NotiGui.Hwnd), -duration)
+    }
+
+    NotiGui.OnEvent("Escape", (*) => AnimateFadeOut(NotiGui.Hwnd))
+    ; NotiGui.OnEvent("Close", (*) => AnimateFadeOut(NotiGui.Hwnd))
+}
+
+AnimateFadeIn(hwnd, duration := 300) {
+    steps := 30
+    interval := duration // steps
+    stepAmount := 255 // steps
+
+    loop steps {
+        opacity := Round(A_Index * (255 / steps))
+        WinSetTransparent(opacity, hwnd)
+        Sleep(interval)
+    }
+
+    ; Final adjustment to max opacity
+    WinSetTransparent(255, hwnd)
+}
+
+AnimateFadeOut(hwnd, duration := 300) {
+    steps := 30
+    interval := duration // steps
+    stepAmount := 255 // steps
+
+    loop steps {
+        opacity := Round(255 - (A_Index * (255 / steps)))
+        WinSetTransparent(opacity, hwnd)
+        Sleep(interval)
+    }
+
+    ; Ensure completely invisible, then close
+    WinSetTransparent(0, hwnd)
+    WinClose(hwnd)
+}
+
+
+
 
 ; ################################ ;
 ; ####### Window Functions ####### ;
@@ -2435,11 +2621,12 @@ updateGlobalThemeVariables(themeName := "") {
 	; Create ini file if it doesn't exist for dark, light, and custom themes
 	dataSets := Map(
 		"Dark Mode", Map(
+			"MainMenuBackground", "303030",
+			"Background", "303030",
 			"TextLabelBackgroundColor", "none",
 			"TextColor", "dddddd",
 			"ButtonTextColor", "000000",
 			"LinkColor", "99c3ff",
-			"Background", "303030",
 			"ProgressBarColor", "5c5cd8",
 			"ProgressBarBackground", "404040",
 			"DescriptionBoxColor", "404040",
@@ -2448,11 +2635,12 @@ updateGlobalThemeVariables(themeName := "") {
 		),
 	
 		"Light Mode", Map(
+			"MainMenuBackground", "EEEEEE",
+			"Background", "EEEEEE",
 			"TextLabelBackgroundColor", "none",
 			"TextColor", "000000",
 			"ButtonTextColor", "000000",
 			"LinkColor", "4787e7",
-			"Background", "EEEEEE",
 			"ProgressBarColor", "54cc54",
 			"ProgressBarBackground", "FFFFFF",
 			"DescriptionBoxColor", "CCCCCC",
@@ -2461,13 +2649,14 @@ updateGlobalThemeVariables(themeName := "") {
 		),
 	
 		"Custom", Map(
+			"MainMenuBackground", "FFFFFF",
+			"Background", "FFFFFF",
 			"TextLabelBackgroundColor", "none",
 			"TextColor", "000000",
 			"ButtonTextColor", "000000",
 			"LinkColor", "7d4dc2",
-			"Background", "FFFFFF",
 			"ProgressBarColor", "a24454",
-			"ProgressBarBackground", "FFFFFF",
+			"ProgressBarBackground", "EEEEEE",
 			"DescriptionBoxColor", "AAAAAA",
 			"DescriptionBoxTextColor", "000000",
 			"HeaderColor", "ff4840",
@@ -2502,11 +2691,12 @@ updateGlobalThemeVariables(themeName := "") {
 	global currentTheme := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SelectedTheme", "Dark Mode")
 	local themeData := LoadThemeFromINI(currentTheme)
 
+	global MainUI_BG := themeData["MainMenuBackground"]
 	global intWindowColor := themeData["Background"]
 	global intControlColor := themeData["Background"]
 	global intProgressBarColor := themeData["ProgressBarBackground"]
 	global ControlTextColor := themeData["ButtonTextColor"]
-	global linkColor := themeData["LinkColor"]	
+	global linkColor := themeData["LinkColor"]
 }
 
 updateGUITheme(GUIObject) {
@@ -2520,6 +2710,7 @@ updateGUITheme(GUIObject) {
 
 LoadThemeFromINI(themeName, filePath := localScriptDir "\themes.ini") {
     local keys := [
+		"MainMenuBackground",
 		"Background",
 		"TextLabelBackgroundColor",
 		"TextColor",
@@ -2541,86 +2732,85 @@ LoadThemeFromINI(themeName, filePath := localScriptDir "\themes.ini") {
 }
 
 ApplyThemeToGui(guiObj, themeMap) {
-    if !guiObj
-        return
+	if !guiObj || !themeMap
+		return
 
-	local transparentBGs := [
-		"0",
-		"none",
-		"n/a",
-		"transparent",
-		"zero",
-		"clear",
-	]
+	IsTransparent(val) {
+		static transparentSet := Map("0", 1, "none", 1, "n/a", 1, "transparent", 1, "zero", 1, "clear", 1)
+		return transparentSet.Has(StrLower(val))
+	}
 
-	if themeMap && themeMap.Has("Background") and (themeMap["Background"] == "000000" or themeMap["Background"] == "0x000000")
+	; Prevent full-black backgrounds which can create Z-index rendering issues
+	if themeMap.Has("Background") && (StrLower(themeMap["Background"]) = "000000" || StrLower(themeMap["Background"]) = "0x000000")
 		themeMap["Background"] := "010101"
 
-    for _, ctrl in guiObj {
-        ; Skip the main header except for background update
-        if ctrl.Name = "MainHeader" {
-			try ctrl.Opt("Background" themeMap["Background"] " c" themeMap["HeaderColor"])
-		}
-		else
-			try {
-				; Determine foreground and background colors
-				fg := "", bg := "", opt := ""
-				switch ctrl.Type {
-					case "Button":
-						; If "IconButton" is not in the ctrl.Name, continue
-						if InStr(ctrl.Name, "IconButton") = 0 {
-							fg := themeMap["ButtonTextColor"]
-						} 
-						if ArrayHasValue(transparentBGs, StrLower(themeMap["Background"]))
-							bg := "Trans"
-						else bg := themeMap["Background"]
-						opt := "Background" bg (fg ? " c" fg : "")
-					case "Edit", "Text":
-						if InStr(ctrl.Name, "DescriptionBox") = 0 {
-							if ArrayHasValue(transparentBGs, StrLower(themeMap["TextLabelBackgroundColor"]))
-								bg := "Trans"
-							else bg := themeMap["TextLabelBackgroundColor"]
-							fg := themeMap["TextColor"]
-						} else {
-							if ArrayHasValue(transparentBGs, StrLower(themeMap["Background"]))
-								bg := "Trans"
-							else bg := themeMap["DescriptionBoxColor"]
-							fg := themeMap["DescriptionBoxTextColor"]
-						}
-						opt := "Background" bg " c" fg
-					case "Progress":
-						fg := themeMap["ProgressBarColor"]
-						bg := themeMap["ProgressBarBackground"]
-						opt := "Background" bg " Smooth c" fg
-					case "Link":
-						fg := themeMap["LinkColor"]
-						opt := "c" fg
-				}
-	
-				; Compare to cached values
-				needsUpdate := false
-				if ctrl.Type = "Progress" || ctrl.Type = "Link" {
-					; Progress and Link don't use BG in same way
-					if !ctrl.HasOwnProp("_lastFG") || ctrl._lastFG != fg
-						needsUpdate := true
-				} else {
-					if !ctrl.HasOwnProp("_lastFG") || !ctrl.HasOwnProp("_lastBG")
-						|| ctrl._lastFG != fg || ctrl._lastBG != bg
-						needsUpdate := true
-				}
-	
-				; Apply if needed
-				if needsUpdate {
-					ctrl.Opt(opt)
-					ctrl._lastFG := fg
-					ctrl._lastBG := bg
-					ctrl.Redraw()
-				}
-			}
-    }
+	for _, ctrl in guiObj {
+		; Skip invalid controls
+		if !ctrl || !ctrl.HasProp("Type")
+			continue
 
-	if guiObj.BackColor != themeMap["Background"]
-        guiObj.BackColor := themeMap["Background"]
+		try {
+			fg := "", bg := "", opt := ""
+			local type := ctrl.Type
+
+			if ctrl.Name = "MainHeader" {
+				ctrl.Opt("Background" themeMap["Background"] " c" themeMap["HeaderColor"])
+				continue
+			}
+
+			switch type {
+				case "Button":
+					if InStr(ctrl.Name, "IconButton") = 0
+						fg := themeMap["ButtonTextColor"]
+
+					bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
+					opt := "Background" bg (fg ? " c" fg : "")
+				
+				case "Edit", "Text":
+					if InStr(ctrl.Name, "DescriptionBox") = 0 {
+						bg := IsTransparent(themeMap["TextLabelBackgroundColor"]) ? "Trans" : themeMap["TextLabelBackgroundColor"]
+						fg := themeMap["TextColor"]
+					} else {
+						bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["DescriptionBoxColor"]
+						fg := themeMap["DescriptionBoxTextColor"]
+					}
+					opt := "Background" bg " c" fg
+
+				case "Progress":
+					fg := themeMap["ProgressBarColor"]
+					bg := themeMap["ProgressBarBackground"]
+					opt := "Background" bg " Smooth c" fg
+
+				case "Link":
+					fg := themeMap["LinkColor"]
+					opt := "c" fg
+
+				default:
+					continue ; Skip unsupported or unknown control types
+			}
+
+			; Sanitize fg/bg for comparison
+			fg := fg ?? ""
+			bg := bg ?? ""
+
+			; Check if update is needed
+			needsUpdate := (
+				!ctrl.HasOwnProp("_lastFG") || ctrl._lastFG != fg
+				|| (!ctrl.HasOwnProp("_lastBG") && bg != "")
+				|| ctrl._lastBG != bg
+			)
+
+			if needsUpdate {
+				ctrl.Opt(opt)
+				ctrl._lastFG := fg
+				ctrl._lastBG := bg
+			}
+		}
+	}
+
+	; Update GUI background
+	if guiObj.BackColor != themeMap["MainMenuBackground"]
+		guiObj.BackColor := themeMap["MainMenuBackground"]
 }
 
 SaveThemeToINI(themeMap, section, filePath := localScriptDir "\themes.ini") {
@@ -2752,8 +2942,11 @@ moveCenterOfControl(ctrl, targetX, targetY) {
 	local offsetX := targetX - centerX
 	local offsetY := targetY - centerY
 	
-	ctrl.Move(offsetX, offsetY, width, height)
-	ctrl.Redraw()
+	ctrl.Move(offsetX, offsetY)
+
+	; check if the control can be redrawn
+	if ctrl.HasProp("Redraw")
+		ctrl.Redraw()
 }
 
 IsWindowVisibleToUser(hWnd) {
@@ -2906,6 +3099,25 @@ GetSelectedProcessName() {
 	if !IniSectionExists(ProfilesDir, "SelectedProcessExe")
 		updateIniProfileSetting(ProfilesDir, "SelectedProcessExe", "Process", "RobloxPlayerBeta.exe")
     return readIniProfileSetting(ProfilesDir, "SelectedProcessExe", "Process", "RobloxPlayerBeta.exe")
+}
+
+IniSectionExists(fileOrLines, sectionName) {
+    if Type(fileOrLines) = "String" {
+        if !FileExist(fileOrLines)
+            return false
+        lines := StrSplit(FileRead(fileOrLines), "`n")
+    } else if Type(fileOrLines) = "Array" {
+        lines := fileOrLines
+    } else {
+        throw ValueError("Invalid type for IniSectionExists(): must be a file path or array of lines.")
+    }
+
+    sectionHeader := "[" sectionName "]"
+    for line in lines {
+        if Trim(line) = sectionHeader
+            return true
+    }
+    return false
 }
 
 IniKeyExists(filePath, section, key) {
@@ -3333,25 +3545,49 @@ ParseLetterFormat(input) {
 ; ########## Patchnotes ########### ;
 ; ################################# ;
 
-GetGitHubReleaseInfo(owner, repo, release:="latest") {
-    req := ComObject("Msxml2.XMLHTTP")
-    req.open("GET", (release != "latest" and "https://api.github.com/repos/" owner "/" repo "/releases/tags/" release) or "https://api.github.com/repos/" owner "/" repo "/releases/latest", false)
-    req.send()
+GetGitHubReleaseInfo(owner, repo, release := "latest") {
+    static MAX_ATTEMPTS := 10
+    static BASE_DELAY_MS := 1000  ; Start with 1 second delay
 
-    if req.status != 200
-        Error(req.status " - " req.statusText, -1)
+    url := (release != "latest")
+        ? "https://api.github.com/repos/" owner "/" repo "/releases/tags/" release
+        : "https://api.github.com/repos/" owner "/" repo "/releases/latest"
 
-    res := JSON_parse(req.responseText)
+    attempt := 0
+    loop {
+        attempt++
+        try {
+            req := ComObject("Msxml2.XMLHTTP")
+            req.open("GET", url, false)
+            req.setRequestHeader("User-Agent", "AHK-Client") ; GitHub requires this
+            req.send()
 
-    try {
-        return Map( 
-            "title", res.name,     ; The release title (name)
-            "tag", res.tag_name,   ; The release version/tag
-            "body", StripMarkdown(res.body)       ; The release body
-        )
-    }
-    catch PropertyError {
-        (Error(res.message, -1))
+            ; Successful request
+            if (req.status = 200) {
+                res := JSON_parse(req.responseText)
+                return Map(
+                    "title", res.name,
+                    "tag", res.tag_name,
+                    "body", StripMarkdown(res.body)
+                )
+            }
+
+            ; Retry on 429 (Too Many Requests) or 5xx errors or GitHub-specific abuse detection
+            if (req.status = 429 || (req.status >= 500 && req.status < 600) || (req.status = 403 && InStr(req.responseText, "abuse detection"))) {
+                if (attempt >= MAX_ATTEMPTS)
+                    throw Error("Max retry attempts reached: " req.status " - " req.statusText, -1)
+                Sleep(BASE_DELAY_MS * (2 ** (attempt - 1))) ; exponential backoff
+                continue
+            }
+
+            ; Any other error, fail immediately
+            throw Error(req.status " - " req.statusText, -1)
+
+        } catch as e {
+            if (attempt >= MAX_ATTEMPTS)
+                throw Error("Persistent failure after " attempt " attempts.`n" e.Message, -1)
+            Sleep(BASE_DELAY_MS * (2 ** (attempt - 1)))
+        }
     }
 }
 
@@ -3469,37 +3705,69 @@ JSON_parse(str) {
 	return htmlfile.parentWindow.JSON.parse(str)
 }
 
+StripHeadersOnly(text) {
+    ; Normalize line endings
+    text := StrReplace(text, "`r`n", "`n")
+    text := StrReplace(text, "`r", "`n")
+    if InStr(text, "\n")
+        text := StrReplace(text, "\n", "`n")
+
+    ; Split into lines
+    lines := StrSplit(text, "`n")
+
+    ; Loop through each line and replace headers
+    for i, line in lines {
+        ; Match #, ##, or ### headers
+        if RegExMatch(line, "^\s*#{1,3}\s*(.+?)\s*$", &m)
+            lines[i] := "[" m[1] "]"
+    }
+
+    ; Join lines back together
+	return JoinArray(lines, "`n")
+}
+
 StripMarkdown(text) {
+	; Normalize all line endings to `\n`
+	text := StrReplace(text, "`r`n", "`n")
+	text := StrReplace(text, "`r", "`n")
+
+	; Ensure literal \n sequences are converted to actual newlines (common in JSON strings)
+    if InStr(text, "\n")
+        text := StrReplace(text, "\n", "`n")
+
+	; Remove any remaining raw URLs (after markdown links are handled)
+    text := RegExReplace(text, "https?://[^\s\)]+", "")
+	
+	; Wrap all headers in brackets
+	text := StripHeadersOnly(text)
+	
     ; Remove specific HTML tags like <ins>, <del>, <mark>
     text := RegExReplace(text, "(?i)<(ins|del|mark)>(.*?)<\/\1>", "$2")
-
+	
     ; Convert Markdown-style hyperlinks [text](url) → text
     text := RegExReplace(text, "\[(.*?)\]\(.*?\)", "$1")
-
-    ; Remove Markdown-style headings (e.g. # Heading)
-    text := RegExReplace(text, "(?m)^#+\s*", "")
-
+	
     ; Handle bold (**bold** or __bold__)
     text := RegExReplace(text, "(\*\*|__)(.*?)\1", "$2")
-
+	
     ; Handle italics with asterisk or underscore, but avoid bold conflicts
     text := RegExReplace(text, "(?<!\*)\*(?!\*)(.*?)\*(?!\*)", "$1") ; *italic*
     text := RegExReplace(text, "(?<!_)_(?!_)(.*?)_(?!_)", "$1")      ; _italic_
-
+	
 	; Inline code using backticks → 'code'
 	text := RegExReplace(text, "``+(.*?)``+", "'$1'")
-
+	
     ; Strikethrough ~~text~~ → [text]
     text := RegExReplace(text, "~~(.*?)~~", "[$1]")
-
+	
     ; Remove blockquote markers
     text := RegExReplace(text, "(?m)^\s*>\s?", "")
-
+	
     ; Convert list markers (- item) to bullets
     text := RegExReplace(text, "(?m)^\s*-\s*", "• ")
-
-    ; Remove any remaining raw URLs (after markdown links are handled)
-    text := RegExReplace(text, "https?://[^\s\)]+", "")
+	
+	; Reinstate newlines to "`n" for consistency
+	text := StrReplace(text, "`n", "`r`n")
 
     return text
 }
