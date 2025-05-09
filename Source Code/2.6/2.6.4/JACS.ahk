@@ -14,9 +14,8 @@ A_MaxHotkeysPerInterval := 1000
 
 global A_LocalAppData := EnvGet("LOCALAPPDATA")
 global localScriptDir := A_LocalAppData "\JACS\"
-global ProfilesDir := localScriptDir "Profiles.ini"
 global Utilities := localScriptDir "Utilities"
-global TweenService := Utilities "\TweenService.ahk"
+global ProfilesDir := localScriptDir "Profiles.ini"
 
 global IconsFolder := localScriptDir "images\icons\"
 global ActiveIcon := localScriptDir "images\icons\Active.ico"
@@ -83,6 +82,10 @@ global HeaderHeight := 30
 global SelectedProcessExe := GetSelectedProcessName()
 global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
 global currentIcon := icons[4].Icon
+
+; Cooldown Debounces
+global cooldownToggleDebounce := false
+
 setTrayIcon(currentIcon)
 createDefaultSettingsData()
 createDefaultDirectories()
@@ -183,7 +186,6 @@ global currentTheme := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "S
 global lastTheme := currentTheme
 
 global wasActiveWindow := false
-
 global ControlResize := (Target, position, size) => ResizeMethod(Target, position, size)
 global MoveControl := (Target, position, size) => MoveMethod(Target, position, size)
 global AcceptedWarning := readIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", false, "bool") and CreateGui() or createWarningUI()
@@ -200,44 +202,10 @@ global Credits_ColorChangeRate := 5 ; (higher = faster)
 global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 
 OnExit(EndScriptProcess)
-
 OnMessage(0x0112, WM_SYSCOMMAND_Handler)
 DeleteTrayTabs()
 
 A_TrayMenu.Insert("&Reload Script", "Fix GUI", MenuHandler)  ; Creates a new menu item.
-
-GetUpdate()
-
-global UtilitiesModule := ""
-importModuleFromGitHubUtilities() {
-	global Utilities
-	global UtilitiesModule
-	global URL_SCRIPT
-	
-	if !FileExist(Utilities)
-		DirCreate(Utilities)
-	
-	if !FileExist(UtilitiesModule) {
-		try DownloadURL(URL_SCRIPT, UtilitiesModule)
-	} else {
-		FileDelete(UtilitiesModule)
-		Sleep(2000) ; Wait for the file to be deleted
-		try DownloadURL(URL_SCRIPT, UtilitiesModule)
-	}
-
-	if !FileExist(UtilitiesModule) {
-		debugNotif("Failed to download Utilities.ahk", "Error")
-		return
-	}
-	
-	; Load the module
-	try {
-		if !FileExist(UtilitiesModule)
-			#Include %UtilitiesModule%
-	} catch Error as e {
-		debugNotif("Failed to load Utilities.ahk: " e.Message, "Error")
-	}
-}
 
 MenuHandler(ItemName, ItemPos, MyMenu) {
 	global MainUI_PosX
@@ -281,15 +249,16 @@ IsVersionNewer(localVersion, onlineVersion) {
 	return "Updated" ; Versions are equal
 }
 
-GetLatestReleaseVersion() {
+GetLatestReleaseVersion(JSON := "") {
     local URL_API := "https://api.github.com/repos/WoahItsJeebus/JACS/releases/latest"
-    local tempJSONFile := A_Temp "\latest_release.json"
+    local tempJSONFile := JSON or A_Temp "\latest_release.json"
     
-    try {
-        DownloadURL(URL_API, tempJSONFile)  ; Download the JSON response
-    } catch {
-        return ""
-    }
+	if !JSON
+		try {
+			DownloadURL(URL_API, tempJSONFile)  ; Download the JSON response
+		} catch {
+			return ""
+		}
     
     local jsonText := FileRead(tempJSONFile)
     FileDelete(tempJSONFile)  ; Clean up the temporary file
@@ -318,32 +287,37 @@ GetUpdate(*) {
     global autoUpdateDontAsk
     global version
     
-    local latestVersion := GetLatestReleaseVersion()
-    if (latestVersion = "")
-        return ""
-    
+    global URL_SCRIPT
+	global tempUpdateFile
+	global latestVersion := GetLatestReleaseVersion()
+	
+	global localScriptDir
+	local localScriptPath := localScriptDir "JACS.ahk"
+
     if IsVersionNewer(version, latestVersion) == "Outdated" {
         if !autoUpdateDontAsk {
-            autoUpdateDontAsk := true
-            SetTimer(AutoUpdate, 0)
-            SendNotification("Click here to install", "JACS Update Available")
+            SendNotification("Get the latest version from GitHub?", Map(
+				"Type", "yesno",
+				"OnYes", (*) => (
+					autoUpdateDontAsk := true
+					Run("https://github.com/WoahItsJeebus/JACS/releases/latest")
+				),
+				"OnNo", (*) => (
+					autoUpdateDontAsk := true
+					SetTimer(AutoUpdate, 0)
+				),
+				"Duration", 15000,
+				"Title", "JACS - Update Available!",
+			))
         }
     }
 	else if IsVersionNewer(version, latestVersion) == "Updated" {
 		autoUpdateDontAsk := false
 		SetTimer(AutoUpdate, 0)
 	}
-
-	RollThankYou()
 }
 
-UpdateScript(targetFile := tempUpdateFile) {
-	try FileMove(targetFile, A_ScriptFullPath, 1) ; Overwrite current script
-	catch
-		try FileMove(targetFile, A_ScriptFullPath)
-	
-	Reload
-}
+SetTimer(RollThankYou, 10000)
 
 ; ================================================= ;
 
@@ -728,7 +702,7 @@ CreateGui(*) {
 	
 	; Update ElapsedTimeLabel with the formatted time and total wait time in minutes
     UpdateTimerLabel()
-
+	
 	; ###################################################################### ;
 	; #################### UI Formatting and Visibility #################### ;
 	; ###################################################################### ;
@@ -751,11 +725,19 @@ CreateGui(*) {
 	if isActive > 1
 		ToggleCore(,isActive)
 
+	
+	
+	; ApplyThemeToGui(MainUI, DarkTheme)
+	setTrayIcon(icons[isActive].Icon)
+	
+	CheckDeviceTheme()
+	AddTipBox()
+	
 	local loopFunctions := Map(
 		"CheckDeviceTheme", Map(
 			"Function", CheckDeviceTheme.Bind(),
 			"Interval", 250,
-			"Disabled", false
+			"Disabled", true
 		),
 		"SaveMainUIPosition", Map(
 			"Function", SaveMainUIPosition.Bind(),
@@ -783,14 +765,6 @@ CreateGui(*) {
 			"Disabled", false
 		),
 	)
-	
-	
-	; ApplyThemeToGui(MainUI, DarkTheme)
-	setTrayIcon(icons[isActive].Icon)
-
-	CheckDeviceTheme()
-	AddTipBox()
-
 	; Run loop functions
 	for FuncName, Data in loopFunctions
 		if not Data["Disabled"] {
@@ -1024,8 +998,7 @@ CreateWindowSettingsGUI(*) {
 	global intControlColor
 	global ControlTextColor
 
-	CloseSettingsUI(*)
-	{
+	CloseSettingsUI(*) {
 		if WindowSettingsUI {
 			WindowSettingsUI.Destroy()
 			WindowSettingsUI := ""
@@ -1067,10 +1040,11 @@ CreateWindowSettingsGUI(*) {
 	local Popout_Margin_Width := Popout_Width-WindowSettingsUI.MarginX
 	AlwaysOnTopButton := WindowSettingsUI.Add("Button", "Section Center vAlwaysOnTopButton h" buttonHeight " w" Popout_Margin_Width, "Always-On-Top: " AOT_Text)
 	SoundToggleButton := WindowSettingsUI.Add("Button", "xm Section Center vSoundToggleButton h" buttonHeight " w" Popout_Margin_Width, "Sounds: " activeText_Sound)
-	themeLabel := WindowSettingsUI.Add("Text", "xm Left vThemeLabel h" buttonHeight " w" Popout_Margin_Width, "Theme: " . currentTheme)
-	themeDropdown := WindowSettingsUI.Add("DropDownList", "Section xm y+-5 R10 vThemeChoice h" buttonHeight " w" Popout_Margin_Width*0.75, themeNames)
+	themeLabel := WindowSettingsUI.Add("Text", "xm Left vThemeLabel h" buttonHeight*0.95 " w" Popout_Margin_Width, "Theme: " . currentTheme)
+	themeDropdown := WindowSettingsUI.Add("DropDownList", "Section xm R10 vThemeChoice h" buttonHeight " w" (Popout_Margin_Width*0.75) - buttonHeight-3, themeNames)
 	editTheme := WindowSettingsUI.Add("Button","x+1 y+-22 Center vEditThemeButton h" buttonHeight+2 " w" Popout_Margin_Width*0.25, "Edit Theme")
-	
+	refreshTheme := WindowSettingsUI.Add("Button", "x+1 Center vRefreshThemeButton h" buttonHeight+2 " w" buttonHeight+2, "🔄")
+
 	; Get index of the current theme name
 	for index, name in themeNames {
 		if (name = currentTheme) {
@@ -1093,63 +1067,13 @@ CreateWindowSettingsGUI(*) {
 	editTheme.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	editTheme.Opt("Background" intWindowColor . " c" ControlTextColor)
 	editTheme.OnEvent("Click", processThemeEdit)
+	
+	refreshTheme.SetFont("s" 16 " w" 550, buttonFont)
+	refreshTheme.Opt("Background" intWindowColor . " c" ControlTextColor)
+	refreshTheme.OnEvent("Click", CheckDeviceTheme)
 
 	themeDropdown.OnEvent("Change", OnThemeDropdownChange)
 	themeDropdown.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-
-	processThemeEdit(*) {
-		if FileExist(localScriptDir "\themes.ini")
-			Run(localScriptDir "\themes.ini")
-		else {
-			ToolTip("themes.ini not found!")
-			Sleep(2000)
-			ToolTip()
-		}
-	}
-
-	OnThemeDropdownChange(*) {
-		global ProfilesDir
-		selectedTheme := themeDropdown.Text
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SelectedTheme", selectedTheme)
-		currentTheme := selectedTheme
-		themeLabel.Text := "Theme: " . selectedTheme
-
-		updateGlobalThemeVariables(selectedTheme)
-		updateGUITheme(WindowSettingsUI)
-		updateGUITheme(MainUI)
-	}
-	
-	OnProcessDropdownChange(*) {
-		local selectedExe := ProcessDropdown.Text  ; get the selected process name
-		ProcessLabel.Text := "Searching for: " . selectedExe
-		
-		SetSelectedProcessName(selectedExe)
-		loadProfileSettings(selectedExe)
-	}
-
-	PopulateProcessDropdown(*) {
-		local winIDs := WinGetList()  ; Returns an array of window handles.
-		local processList := []       ; Array for unique process names.
-		local Items := ControlGetItems(ProcessDropdown.Hwnd) 
-		
-		for index, winID in winIDs {
-			local title := WinGetTitle("ahk_id " winID)
-			if (title = "")
-				continue  ; Skip windows without a title.
-			
-			local procName := ""
-			try {
-				procName := WinGetProcessName("ahk_id " winID)
-			} catch {
-				continue  ; Skip windows that trigger an error (like access denied).
-			}
-			
-			for i, name in Items {
-				if Items[i] != procName and IsWindowVisibleToUser(winID)
-					ProcessDropdown.Add([procName])
-			}
-		}
-	}
 	
 	; Add a label to display the currently selected process
     local ProcessLabel := WindowSettingsUI.Add("Text", "xm Left h" buttonHeight " vProcessLabel w" Popout_Margin_Width, "Searching for: " SelectedProcessExe)
@@ -1183,6 +1107,62 @@ CreateWindowSettingsGUI(*) {
 	)
 	Descriptions["ProcessLabel"] := Descriptions["ProcessDropdown"]
 	
+	processThemeEdit(*) {
+		if FileExist(localScriptDir "\themes.ini")
+			Run(localScriptDir "\themes.ini")
+		else
+			SendNotification("themes.ini not found!", Map(
+				"Title", "JACS - Error",
+				"Timeout", 5000,
+				"Type", "Info",
+			),)
+	}
+	
+	OnThemeDropdownChange(*) {
+		global ProfilesDir
+		selectedTheme := themeDropdown.Text
+		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SelectedTheme", selectedTheme)
+		currentTheme := selectedTheme
+		themeLabel.Text := "Theme: " . selectedTheme
+
+		updateGlobalThemeVariables(selectedTheme)
+		CheckDeviceTheme()
+		; updateGUITheme(WindowSettingsUI)
+		; updateGUITheme(MainUI)
+	}
+	
+	OnProcessDropdownChange(*) {
+		local selectedExe := ProcessDropdown.Text  ; get the selected process name
+		ProcessLabel.Text := "Searching for: " . selectedExe
+		
+		SetSelectedProcessName(selectedExe)
+		loadProfileSettings(selectedExe)
+	}
+
+	PopulateProcessDropdown(*) {
+		local winIDs := WinGetList()  ; Returns an array of window handles.
+		local processList := []       ; Array for unique process names.
+		local Items := ControlGetItems(ProcessDropdown.Hwnd) 
+		
+		for index, winID in winIDs {
+			local title := WinGetTitle("ahk_id " winID)
+			if (title = "")
+				continue  ; Skip windows without a title.
+			
+			local procName := ""
+			try {
+				procName := WinGetProcessName("ahk_id " winID)
+			} catch {
+				continue  ; Skip windows that trigger an error (like access denied).
+			}
+			
+			for i, name in Items {
+				if Items[i] != procName and IsWindowVisibleToUser(winID)
+					ProcessDropdown.Add([procName])
+			}
+		}
+	}
+
 	updateDescriptionBox(newText := "") {
 		DescriptionBox.Text := newText
 	}
@@ -1382,11 +1362,11 @@ CreateClickerSettingsGUI(*) {
 	ToggleMouseLock.Opt("Background" intWindowColor " c" ControlTextColor)
 	SendKeyButton.Opt("Background" intWindowColor " c" ControlTextColor)
 
-	MouseSpeedSlider.Opt("Buddy1MS_Buddy1 Buddy2MS_Buddy2 Range0-" maxSpeed)
-	ClickRateSlider.Opt("Buddy1Rate_Buddy1 Buddy2Rate_Buddy2 Range0-" maxRate)
-	ClickRadiusSlider.Opt("Buddy1ClickRadiusBuddy1 Buddy2ClickRadiusBuddy2 Range0-" maxRadius)
-	MouseClicksSlider.Opt("Buddy1MouseClicksBuddy1 Buddy2MouseClicksBuddy2 Range1-" maxClicks)
-	CooldownSlider.Opt("Buddy1Cooldown_Buddy1 Buddy2Cooldown_Buddy2 Range10-" maxCooldown)
+	MouseSpeedSlider.Opt("ToolTipBottom Buddy1MS_Buddy1 Buddy2MS_Buddy2 TickInterval" maxSpeed/10 " Range0-" maxSpeed)
+	ClickRateSlider.Opt("ToolTipBottom Buddy1Rate_Buddy1 Buddy2Rate_Buddy2 TickInterval" maxRate/10 " Range0-" maxRate)
+	ClickRadiusSlider.Opt("ToolTipBottom Buddy1ClickRadiusBuddy1 Buddy2ClickRadiusBuddy2 TickInterval" maxRadius/10 " Range0-" maxRadius)
+	MouseClicksSlider.Opt("ToolTipBottom Buddy1MouseClicksBuddy1 Buddy2MouseClicksBuddy2 TickInterval" maxClicks/10 " Range1-" maxClicks)
+	CooldownSlider.Opt("ToolTipBottom Buddy1Cooldown_Buddy1 Buddy2Cooldown_Buddy2 TickInterval" (maxCooldown-10)/15 " Range10-" maxCooldown)
 	
 	DescriptionBox.Opt("+Border Background" intWindowColor . " c" ControlTextColor)
 
@@ -1568,6 +1548,7 @@ CreateClickerSettingsGUI(*) {
 
 	updateGUITheme(SettingsUI)
 	SettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
+	updateGUITheme(SettingsUI)
 
 	SetTimer(mouseHoverDescription,50)
 }
@@ -1772,6 +1753,11 @@ CreateExtrasGUI(*) {
 	global MainUI_PosX
 	global MainUI_PosY
 
+	; Colors
+	global intWindowColor
+	global intControlColor
+	global ControlTextColor
+
 	local DescriptionBox := ""
 
 	local createNewWarningButton := ""
@@ -1889,6 +1875,7 @@ CreateExtrasGUI(*) {
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
 	ExtrasUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . " h" . Popout_Height)
+	updateGUITheme(ExtrasUI)
 
 	killGUI(*) {
 		if ExtrasUI
@@ -2215,6 +2202,15 @@ ToggleCore(optionalControl?, forceState?, *) {
 	global CoreToggleButton
 	global ProfilesDir
 	global SelectedProcessExe
+	global cooldownToggleDebounce
+
+	if cooldownToggleDebounce and isActive != 2
+		return
+
+	cooldownToggleDebounce := true	
+	SetTimer((*) => (
+		cooldownToggleDebounce := false
+	), 1000)
 
 	local newMode := forceState or switchActiveState()
 	
@@ -2460,96 +2456,7 @@ IsFunc(obj) {
 	}
 }
 
-ShowNotification("This is a test notification", Map(
-	"Type", "yesno",
-	"OnYes", (*) => MsgBox("You clicked Yes!"),
-	"OnNo", (*) => MsgBox("You clicked No!"),
-	"Duration", 5000,
-))
-
-SetRoundedCorners(hwnd, radius := 12) {
-    WinGetPos(&x,&y, &w, &h, hwnd)
-    hRgn := DllCall("CreateRoundRectRgn"
-        , "int", 0, "int", 0
-        , "int", w, "int", h
-        , "int", radius, "int", radius
-        , "ptr")
-    
-    DllCall("SetWindowRgn"
-        , "ptr", hwnd
-        , "ptr", hRgn
-        , "int", true)
-}
-
-ShowNotification(message, config := Map()) {
-    static NotiGui
-
-	MonitorGetWorkArea(1, &monLeft, &monTop, &monRight, &monBottom)
-	screenW := monRight - monLeft
-	screenH := monBottom - monTop
-
-
-	local popupWidth := 350
-	local popupHeight := 120
-	local finalX := monRight - popupWidth - 25
-	local startX := monRight
-	local y := monTop + ((screenH - popupHeight) // 2)
-
-    if IsSet(NotiGui)
-        AnimateFadeOut(NotiGui.Hwnd)
-
-    local type     := config.Has("Type")     ? config["Type"]     : "info"
-    local duration := config.Has("Duration") ? config["Duration"] : 4000
-    local onYes    := config.Has("OnYes")    ? config["OnYes"]    : ""
-    local onNo     := config.Has("OnNo")     ? config["OnNo"]     : ""
-
-    NotiGui := Gui("+AlwaysOnTop -SysMenu -Caption +ToolWindow +LastFound")
-	; Adjust border stroke thickness
-	
-	NotiGui.MarginX := 20
-	NotiGui.MarginY := 20
-	popup_Margin_Width := popupWidth - (NotiGui.MarginX * 2)
-	popup_Margin_Height := popupHeight - (NotiGui.MarginY * 2)
-
-    NotiGui.BackColor := "505050"
-    NotiGui.SetFont("s10 cWhite", "Segoe UI")
-    NotiGui.Add("Text", "w" popup_Margin_Width " h" popup_Margin_Height, message)
-
-    btnYes := ""
-	btnNo := ""
-    if (type = "yesno") {
-        btnYes := NotiGui.Add("Button", "w" popup_Margin_Width/2, "Yes")
-        btnNo  := NotiGui.Add("Button", "x+m w" popup_Margin_Width/2, "No")
-
-        btnYes.OnEvent("Click", (*) => (
-            AnimateFadeOut(NotiGui.Hwnd),
-            IsFunc(onYes) ? onYes.Call() : ""
-        ))
-        btnNo.OnEvent("Click", (*) => (
-            AnimateFadeOut(NotiGui.Hwnd),
-            IsFunc(onNo) ? onNo.Call() : ""
-        ))
-    }
-
-	; get center of screen
-	WinGetPos(,, &displayW, &displayH, "A")
-	; Show NotiGui in the center of the screen
-	NotiGui.Show("X" . (displayW - popupWidth - 25) . " Y" . ((displayH - popupHeight) // 2) . " w" popupWidth " h" popupHeight)
-	
-	WinSetTransparent(0, NotiGui.Hwnd) ; Start fully transparent
-	NotiGui.Show("NoActivate")  ; Show non-activating
-	SetRoundedCorners(NotiGui.Hwnd, 16)
-	AnimateFadeIn(NotiGui.Hwnd)
-	
-    if (type != "yesno") {
-        SetTimer(() => AnimateFadeOut(NotiGui.Hwnd), -duration)
-    }
-
-    NotiGui.OnEvent("Escape", (*) => AnimateFadeOut(NotiGui.Hwnd))
-    ; NotiGui.OnEvent("Close", (*) => AnimateFadeOut(NotiGui.Hwnd))
-}
-
-AnimateFadeIn(hwnd, duration := 300) {
+AnimateFadeIn(hwnd, duration := 75) {
     steps := 30
     interval := duration // steps
     stepAmount := 255 // steps
@@ -2564,11 +2471,11 @@ AnimateFadeIn(hwnd, duration := 300) {
     WinSetTransparent(255, hwnd)
 }
 
-AnimateFadeOut(hwnd, duration := 300) {
+AnimateFadeOut(hwnd, duration := 75) {
     steps := 30
     interval := duration // steps
     stepAmount := 255 // steps
-
+	
     loop steps {
         opacity := Round(255 - (A_Index * (255 / steps)))
         WinSetTransparent(opacity, hwnd)
@@ -2580,7 +2487,20 @@ AnimateFadeOut(hwnd, duration := 300) {
     WinClose(hwnd)
 }
 
-
+SetRoundedCorners(hwnd, radius := 12) {
+    ; Handle GUI object
+	WinGetPos(&x,&y, &w, &h, hwnd)
+	hRgn := DllCall("CreateRoundRectRgn"
+		, "int", 0, "int", 0
+		, "int", w, "int", h
+		, "int", radius, "int", radius
+		, "ptr")
+	
+	DllCall("SetWindowRgn"
+		, "ptr", hwnd
+		, "ptr", hRgn
+		, "int", true)
+}
 
 
 ; ################################ ;
@@ -2681,9 +2601,8 @@ updateGlobalThemeVariables(themeName := "") {
 		for dataName, dataValue in themeData {
 			existingValue := IniRead(themeFile, themeName, dataName, "__MISSING__")
 			
-			if existingValue == "__MISSING__" {
+			if existingValue == "__MISSING__"
 				IniWrite(dataValue, themeFile, themeName, dataName)
-			}
 		}
 	}
 
@@ -2732,18 +2651,18 @@ LoadThemeFromINI(themeName, filePath := localScriptDir "\themes.ini") {
 }
 
 ApplyThemeToGui(guiObj, themeMap) {
-	if !guiObj || !themeMap
+	if !guiObj or !themeMap
 		return
 
 	IsTransparent(val) {
 		static transparentSet := Map("0", 1, "none", 1, "n/a", 1, "transparent", 1, "zero", 1, "clear", 1)
-		return transparentSet.Has(StrLower(val))
+		return transparentSet.Has(val) ? true : false
 	}
 
 	; Prevent full-black backgrounds which can create Z-index rendering issues
-	if themeMap.Has("Background") && (StrLower(themeMap["Background"]) = "000000" || StrLower(themeMap["Background"]) = "0x000000")
-		themeMap["Background"] := "010101"
-
+	if themeMap.Has("Background") and (themeMap["Background"] = "000000" or themeMap["Background"] = "0x000000")
+		themeMap["Background"] := "0a0a0a"
+	
 	for _, ctrl in guiObj {
 		; Skip invalid controls
 		if !ctrl || !ctrl.HasProp("Type")
@@ -2753,11 +2672,6 @@ ApplyThemeToGui(guiObj, themeMap) {
 			fg := "", bg := "", opt := ""
 			local type := ctrl.Type
 
-			if ctrl.Name = "MainHeader" {
-				ctrl.Opt("Background" themeMap["Background"] " c" themeMap["HeaderColor"])
-				continue
-			}
-
 			switch type {
 				case "Button":
 					if InStr(ctrl.Name, "IconButton") = 0
@@ -2765,30 +2679,32 @@ ApplyThemeToGui(guiObj, themeMap) {
 
 					bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
 					opt := "Background" bg (fg ? " c" fg : "")
-				
 				case "Edit", "Text":
-					if InStr(ctrl.Name, "DescriptionBox") = 0 {
-						bg := IsTransparent(themeMap["TextLabelBackgroundColor"]) ? "Trans" : themeMap["TextLabelBackgroundColor"]
-						fg := themeMap["TextColor"]
-					} else {
-						bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["DescriptionBoxColor"]
+					if InStr(ctrl.Name, "DescriptionBox") {
+						bg := IsTransparent(themeMap["DescriptionBoxColor"]) ? "Trans" : themeMap["DescriptionBoxColor"] ? themeMap["DescriptionBoxColor"] : themeMap["Background"]
 						fg := themeMap["DescriptionBoxTextColor"]
+					} else if InStr(ctrl.Name, "NotificationTitle") {
+						bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
+						fg := themeMap["HeaderColor"]
+					} else if InStr(ctrl.Name, "MainHeader") {
+						bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
+						fg := themeMap["HeaderColor"]
+					} else {
+						bg := IsTransparent(themeMap["TextLabelBackgroundColor"]) ? "Trans" : themeMap["TextLabelBackgroundColor"] ? themeMap["TextLabelBackgroundColor"] : themeMap["Background"]
+						fg := themeMap["TextColor"]
 					}
 					opt := "Background" bg " c" fg
-
 				case "Progress":
 					fg := themeMap["ProgressBarColor"]
 					bg := themeMap["ProgressBarBackground"]
 					opt := "Background" bg " Smooth c" fg
-
 				case "Link":
 					fg := themeMap["LinkColor"]
 					opt := "c" fg
-
 				default:
 					continue ; Skip unsupported or unknown control types
 			}
-
+			
 			; Sanitize fg/bg for comparison
 			fg := fg ?? ""
 			bg := bg ?? ""
@@ -2802,6 +2718,7 @@ ApplyThemeToGui(guiObj, themeMap) {
 
 			if needsUpdate {
 				ctrl.Opt(opt)
+				try ctrl.Redraw()
 				ctrl._lastFG := fg
 				ctrl._lastBG := bg
 			}
@@ -2836,6 +2753,9 @@ isMouseClickingOnTargetWindow(key?, override*) {
 		return
 	
 	checkWindow(*) {
+		if GetKeyState(key) == 0
+			return SetTimer(checkWindow, 0, 1)
+		
 		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
 		
 		if hoverWindow == process
@@ -2845,8 +2765,7 @@ isMouseClickingOnTargetWindow(key?, override*) {
 	if override[1]
 		return checkWindow()
 	
-	while (GetKeyState(key) == 1)
-		checkWindow()
+	SetTimer(checkWindow, 100, 1)
 }
 
 ClickWindow(process) {
@@ -2856,14 +2775,13 @@ ClickWindow(process) {
 	global MouseClickRadius
 	global MouseClicks
 
-	try wasActiveWindow := WinActive(process) and true or false
+	try wasActiveWindow := WinActive(process) or false
 
 	MouseGetPos(&mouseX, &mouseY, &hoverWindow)
 	local activeTitle := ""
 
-	; Check if a window is active before calling WinGetTitle("A")
-	if WinExist("A")
-		try activeTitle := WinGetTitle("A")  ; Only attempt if a window exists
+	; Check active window
+	try activeTitle := WinGetTitle("A")
 	
 	ActivateWindow() {
 		try {
@@ -2874,14 +2792,14 @@ ClickWindow(process) {
 
 	doClick(loopAmount := 1) {
 		loop loopAmount {
+			local WindowX := 0, WindowY := 0, Width := 0, Height := 0
 			global KeyToSend
 			
-			if activeTitle and not WinExist(activeTitle)
+			if activeTitle and !WinExist(activeTitle)
 				break
 			
 			local cachedWindowID := ""
 			local cachedWindowPos := ""
-			local WindowX := 0, WindowY := 0, Width := 0, Height := 0
 			local hoverWindow := ""
 			local hoverCtrl := ""
 			local mouseX := 0, mouseY := 0
@@ -2906,7 +2824,7 @@ ClickWindow(process) {
 				Click(KeyToSend == "RButton" and "Right" or "Left")
 
 			if loopAmount > 1
-				Sleep(Random(10,(MouseClickRateOffset or 10)))
+				Sleep(math.random(10,(MouseClickRateOffset or 10)))
 		}
 	}
 
@@ -2914,11 +2832,14 @@ ClickWindow(process) {
 	if (hoverWindow and (hoverWindow != process and hoverWindow != WinGetID(process))) and activeTitle
 		ActivateWindow()
 
+	; Check pixel color in radius
 	doClick(MouseClicks or 5)
 }
 
-debugNotif(msg := "1", title := "", options := "16", duration := 2) {
-	SendNotification(msg, title, options, duration)
+isPixelColorInRadius(x, y, color, radius) {
+	local pixelColor := PixelGetColor(x, y, "RGB")
+	local distance := Sqrt((x - x) ** 2 + (y - y) ** 2)
+	return (pixelColor = color && distance <= radius)
 }
 
 ; ################################ ;
@@ -2929,6 +2850,100 @@ class math {
     static clamp(number, minimum, maximum) {
         return Min(Max(number, minimum), maximum)
     }
+	static round(number, decimalPlaces) {
+			return Round(number, (decimalPlaces or 0))
+	}
+	static random(min, max) {
+		return Random(min, max)
+	}
+	static isInteger(value) {
+		return (value is Integer)
+	}
+	static isNumber(value) {
+		return (value is Number)
+	}
+	static isFloat(value) {
+		return (value is Float)
+	}
+	static isString(value) {
+		return (value is String)
+	}
+	static isArray(value) {
+		return (value is Array)
+	}
+	static isObject(value) {
+		return (value is Object)
+	}
+	static isFunc(value) {
+		return (value is Func)
+	}
+	static isMap(value) {
+		return (value is Map)
+	}
+	static isBuffer(value) {
+		return (value is Buffer)
+	}
+	static min(value1, value2) {
+		return Min(value1, value2)
+	}
+	static max(value1, value2) {
+		return Max(value1, value2)
+	}
+	static abs(value) {
+		return Abs(value)
+	}
+	static sqrt(value) {
+		return Sqrt(value)
+	}
+	static sin(value) {
+		return Sin(value)
+	}
+	static cos(value) {
+		return Cos(value)
+	}
+	static tan(value) {
+		return Tan(value)
+	}
+	static asin(value) {
+		return Asin(value)
+	}
+	static acos(value) {
+		return Acos(value)
+	}
+	static atan(value) {
+		return Atan(value)
+	}
+	static log10(value) {
+		return Log(value)
+	}
+	static log(value) {
+		return Ln(value)
+	}
+	static exp(value) {
+		return Exp(value)
+	}
+	static floor(value) {
+		return Floor(value)
+	}
+	static ceil(value) {
+		return Ceil(value)
+	}
+	static sign(value) {
+		return (value > 0) ? 1 : (value < 0) ? -1 : 0
+	}
+	static pi() {
+		return 3.14159265358979323846
+	}
+	static mod(value, divisor) {
+		return Mod(value, divisor)
+	}
+	static pow(base, exponent) {
+		return base ** exponent
+	}
+}
+
+Lerp(start, stop, step) {
+    return start + (stop - start) * (step / 100)
 }
 
 ; ################################ ;
@@ -3142,12 +3157,15 @@ AutoUpdate(*) {
 	GetUpdate()
 }
 
-toggleAutoUpdate(doUpdate){
-	if not doUpdate
+toggleAutoUpdate(doUpdate := false) {
+	if !doUpdate
 		return SetTimer(AutoUpdate, 0)
 
-	return SetTimer(AutoUpdate, 10000)
+	GetUpdate()
+	return SetTimer(AutoUpdate, 60000)
 }
+
+toggleAutoUpdate(true)
 
 DeleteTrayTabs(*) {
 	TabNames := [
@@ -3158,6 +3176,9 @@ DeleteTrayTabs(*) {
 		"&Help",
 		"&Open"
 	]
+
+	if doDebug
+		return
 
 	if TabNames.Length > 0
 		for _,tab in TabNames
@@ -3240,20 +3261,26 @@ UpdateGuiIcon(newIconPath) {
 }
 
 createDefaultDirectories(*) {
-	if !FileExist(localScriptDir)
+	global localScriptDir, Utilities, icons
+	if !DirExist(localScriptDir)
 		DirCreate(localScriptDir)
 
-	if !FileExist(localScriptDir "\images")
-		DirCreate(localScriptDir "\images")
+	if !DirExist(localScriptDir "images")
+		DirCreate(localScriptDir "images")
 
-	if !FileExist(localScriptDir "\images\icons")
-		DirCreate(localScriptDir "\images\icons")
+	if !DirExist(localScriptDir "images\icons")
+		DirCreate(localScriptDir "images\icons")
+
+	if !DirExist(Utilities)
+		DirCreate(Utilities)
 
 	for i,IconData in icons {
 		if !FileExist(IconData.Icon)
 			DownloadURL(IconData.URL, IconData.Icon)
 	}
 }
+
+; ################################ ;
 
 IsAltTabOpen() {
     return (
@@ -3283,14 +3310,10 @@ readIniProfileSetting(filePath, section, key, default := "", type := "") {
 	return value
 }
 
-EnsureDirectoryExists(filePath) {
+updateIniProfileSetting(filePath, section, key, value) {
     SplitPath(filePath,, &dir)
     if !DirExist(dir)
         DirCreate(dir)
-}
-
-updateIniProfileSetting(filePath, section, key, value) {
-    EnsureDirectoryExists(filePath)
 
     existing := IniRead(filePath, section, key, "")
     if (existing != value)
@@ -3345,62 +3368,291 @@ GetRandomColor(minVal := 0, maxVal := 255) {
     return {R: r, G: g, B: b}
 }
 
-Lerp(start, stop, step) {
-    return start + (stop - start) * (step / 100)
-}
-
-RollThankYou(*)
-{
+RollThankYou(*) {
 	local randomNumber := Random(1,10000)
 	local OSVer := GetWinOSVersion()
 	
 	if randomNumber != 1 or (OSVer != "11" and OSVer != "10")
 		return
 	
-	SendNotification("Hey! I want to thank you for using my script! It's nice to see my work getting out there and being used!", "Jeebus' Auto-Clicker Script", "16", 0)
+	doNotif(*) {
+		SendNotification("Hey! I want to thank you for using my script! It's nice to see my work getting out there and being used!", Map(
+			"Type", "info",
+			"OnYes", "",
+			"OnNo", "",
+			"Duration", 4000,
+			"Title", "JACS - Thank You!",
+		))
+	}
+
+	SetTimer(doNotif, -1)
 }
 
-SendNotification(msg := "", title := "", options := "", optionalCooldown := 0) {
-	local SleepAmount := 1000 * optionalCooldown
+SendNotification(message, config := Map(
+	"Type", "info",
+	"OnYes", "",
+	"OnNo", "",
+	"Duration", 4000,
+	"Title", "JACS - Notification",
+)) {
+    static notificationGUIs := [] ; Store notification GUIs in a static array
+	static closeFunctions := Map() ; Store close functions in a static array
+	static themeFunctions := Map() ; Store theme functions in a static array
 
-	if title == "JACS Update Available" {
-		local event := OnMessage(0x404, AHK_NOTIFYICON)
-		AHK_NOTIFYICON(wParam, lParam, msg, hwnd)
-		{
-			if (hwnd != A_ScriptHwnd) {
-				return
-			}
-			if (lParam = 1029) { ; Left-Clicked
-				event := ""
-				
-				try {
-					global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
-					global tempUpdateFile := A_Temp "\temp_script.ahk"
+	global isActive
 
-					DownloadURL(URL_SCRIPT, tempUpdateFile)
-				} catch {
-					try FileDelete(tempUpdateFile)
-					return SendNotification("JACS update failed to download... Continuing with onboard script", "JACS Update Failed")
-				}
-				if tempUpdateFile
-					UpdateScript(tempUpdateFile)
-			}
+	; Colors
+	global intWindowColor
+	global intControlColor
+	global intProgressBarColor
+	global ControlTextColor
+	global linkColor
+
+	global HeaderHeight
+	local popupWidth := 300
+    local popupHeight := 150
+    local popupMarginX := 10
+	local popupMarginY := 10
+
+	; Button Settings
+	local buttonHeight := 23
+	local buttonFontSize := 10
+	local buttonFontWeight := 500
+	local buttonFont := "Consolas"
+	local isRemoved := false
+	; Move currently existing notifications up and begin moving next notification in the queue
+	if notificationGUIs.Length >= 3
+		closeNotification(notificationGUIs[1])
+
+	for i, UI_Hwnd in notificationGUIs {
+		if UI_Hwnd && IsWindowVisibleToUser(UI_Hwnd) {
+			WinGetPos(&x, &y, &w, &h, UI_Hwnd)
+			
+			if WinExist(UI_Hwnd)
+				try SetTimer(SlideGUI(UI_Hwnd, x, y - (popupHeight + popupMarginY),25), -1, notificationGUIs.Length)
+			; UI.Move(x, y - (popupHeight + popupMarginY), w, h)
 		}
 	}
 
-	TrayTip(msg, title, options)
+    ; Setup dimensions
+    MonitorGetWorkArea(1, &monLeft, &monTop, &monRight, &monBottom)
+    screenW := monRight - monLeft
+    screenH := monBottom - monTop
 
-	if optionalCooldown == 0
-		return
+    ; Extract config values
+    local type     := config.Has("Type")     ? config["Type"]     : "info"
+    local duration := config.Has("Duration") ? config["Duration"] : 5000
+    local onYes    := config.Has("OnYes")    ? config["OnYes"]    : ""
+    local onNo     := config.Has("OnNo")     ? config["OnNo"]     : ""
+	local title    := config.Has("Title")    ? config["Title"]    : "JACS"
 
-	if GetWinOSVersion() == "10" {
-		Sleep(SleepAmount)
-		HideTrayTip()
+	
+    ; === Outer shell GUI (invisible container with rounded corners) ===
+    local NotiShellGui := Gui("+AlwaysOnTop +OwnDialogs -Caption +ToolWindow +LastFound +")
+	local id := NotiShellGui.Hwnd
+	notificationGUIs.Push(NotiShellGui.Hwnd)
+	
+    ; === Inner GUI (contains actual controls and styles) ===
+    local NotiInnerGui := Gui("+Parent" NotiShellGui.Hwnd " -Caption +ToolWindow +LastFound +E0x20")
+
+	NotiInnerGui.OnEvent("Escape", closeNotification)
+	NotiShellGui.OnEvent("Escape", closeNotification)
+	
+	NotiInnerGui.MarginX := popupMarginX
+	NotiInnerGui.MarginY := popupMarginY
+
+	NotiInnerGui.BackColor := intWindowColor
+    NotiInnerGui.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+	
+	innerWidth := popupWidth - (popupMarginX * 2)
+	innerHeight := popupHeight - (popupMarginY * 2) - buttonHeight
+
+	; Create controls
+	local titleWidth := MeasureTextWidth(NotiInnerGui, title)
+	local titleLabel := NotiInnerGui.Add("Text", "Center vNotificationTitle w" innerWidth*0.95 " h" HeaderHeight, title)
+    local messageBox := NotiInnerGui.Add("Text", "Center xm w" innerWidth-popupMarginX, message)
+	titleLabel.SetFont("s16 c" ControlTextColor " w" buttonFontWeight, "Ink Free")
+	messageBox.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+	
+	messageBoxSize := getControlSize(messageBox)
+	messageBoxWidth := messageBoxSize.W
+	messageBoxHeight := messageBoxSize.H
+	
+	getControlSize(ctrlObj) {
+		local x, y, w, h
+		ctrlObj.GetPos(&x, &y, &w, &h)
+		return {X: x, Y: y, W: w, H: h}
 	}
-	else {
-		Sleep(SleepAmount)
-		TrayTip
+
+	; Fade out timer
+    fadeDuration := duration ? duration : (type = "yesno") ? duration 30000 : (type = "ok") ? 5000 : duration
+	themeFunctions[id] := SetTimer(() => closeNotification(), -fadeDuration)
+
+	yesno_buttonWidth := (innerWidth-(NotiInnerGui.MarginX*2.5))/2
+    if (type = "yesno") {
+		btnYes := NotiInnerGui.Add("Button","xm h" buttonHeight " w" yesno_buttonWidth, "Yes")
+		btnNo  := NotiInnerGui.Add("Button","x+m h" buttonHeight " w" yesno_buttonWidth, "No")
+
+        btnYes.OnEvent("Click", (*) => (
+            themeFunctions[id] := SetTimer(() => closeNotification(), -1),
+            (onYes is Func || onYes is BoundFunc) ? onYes.Call() : ""
+        ))
+        btnNo.OnEvent("Click", (*) => (
+            themeFunctions[id] := SetTimer(() => closeNotification(), -1),
+            (onNo is Func || onNo is BoundFunc) ? onNo.Call() : ""
+        ))
+    } else if (type = "ok") {
+		btnOk := NotiInnerGui.Add("Button", "xm+" innerWidth*0.35 " h" buttonHeight " w" innerWidth*0.25, "OK")
+		btnOk.OnEvent("Click", (*) => (
+			themeFunctions[id] := SetTimer(() => closeNotification(), -1),
+			(onYes is Func || onYes is BoundFunc) ? onYes.Call() : ""
+		))
+	} else {
+		btnOk := NotiInnerGui.Add("Button", "xm+" innerWidth*0.35 " h" buttonHeight " w" innerWidth*0.25, "OK")
+		btnOk.OnEvent("Click", (*) => (
+			themeFunctions[id] := SetTimer(() => closeNotification(), -1),
+			(onYes is Func || onYes is BoundFunc) ? onYes.Call() : ""
+		))
 	}
+
+    ; Position centered vertically, flush right horizontally
+    shellX := monRight - popupWidth - 25
+    shellY := monTop + ((screenH - popupHeight) / 1.25)
+
+    ; Show both GUIs
+	NotiShellGui.BackColor := getActiveStatusColor()
+	
+	themeFunctions[id] := SetTimer(updateTheme, 500)
+
+	ApplyThemeToGui(NotiInnerGui, LoadThemeFromINI(currentTheme))
+    WinSetTransparent(0, NotiShellGui.Hwnd)
+
+	popupHeight := (messageBoxSize.H *2.5) + buttonHeight + HeaderHeight + (popupMarginY * 2)
+
+	; Apply rounded corners to shell only
+    NotiShellGui.Show("NoActivate x" shellX " y" shellY " w" popupWidth " h" popupHeight)
+    NotiInnerGui.Show("NoActivate w" innerWidth " h" popupHeight)
+	SetRoundedCorners(NotiShellGui.Hwnd, 16)
+	SetRoundedCorners(NotiInnerGui.Hwnd, 16)
+
+	if NotiShellGui
+		SetTimer((*) => AnimateFadeIn(NotiShellGui.Hwnd), -1, notificationGUIs.Length)
+
+	getActiveStatusColor() {
+		global isActive
+		return isActive == 1 ? "df5b5b" : isActive == 2 ? "e0e25b" : isActive == 3 ? "49e649" : "68c1da"
+	}
+
+	; update theme on timer
+	updateTheme(*) {
+		local activeColor := getActiveStatusColor()
+		if NotiInnerGui.BackColor != activeColor
+			NotiShellGui.BackColor := activeColor
+		; ApplyThemeToGui(NotiInnerGui, LoadThemeFromINI(currentTheme))
+	}
+	
+	closeNotification(optionalCtrl := "") {
+		; Remove from notification list
+		try
+			if optionalCtrl {
+				removeFromArray(notificationGUIs, optionalCtrl)
+				removeFromArray(closeFunctions, optionalCtrl)
+				removeFromArray(themeFunctions, optionalCtrl)
+			}
+			else {
+				removeFromArray(notificationGUIs, id)
+				removeFromArray(closeFunctions, id)
+				removeFromArray(themeFunctions, id)
+			}
+
+		try
+			if optionalCtrl
+				AnimateFadeOut(optionalCtrl)
+			else
+				AnimateFadeOut(id)
+		
+		try
+			SetTimer(themeFunctions[(optionalCtrl or id)], 0)
+		
+		try 
+			SetTimer(closeFunctions[(optionalCtrl or id)], 0)
+
+		isRemoved := true
+		; NotiShellGui := unset
+		; NotiInnerGui := unset
+	}
+}
+
+removeFromArray(array, item) {
+	for i, value in array {
+		if (value == item) {
+			array.RemoveAt(i)
+			break
+		}
+	}
+	return array
+}
+
+SlideGUI(GUIHwnd, x, y, duration := 200) {
+	local startX, startY, endX, endY
+	local GUIObj := GuiFromHwnd(GUIHwnd)
+	GUIObj.GetPos(&startX, &startY, &w, &h)
+
+	endX := x
+	endY := y
+
+	; Calculate the distance to move
+	deltaX := endX - startX
+	deltaY := endY - startY
+
+	; Calculate the number of steps based on the duration and speed
+	steps := 20
+	stepDuration := duration / steps
+
+	; Move the GUI in small increments
+	Loop steps {
+		startX += deltaX / steps
+		startY += deltaY / steps
+		GUIObj.Move(startX, startY)
+		Sleep stepDuration
+	}
+}
+
+if doDebug {
+	Hotkey("!F1", (*) => SendNotification("This is a test notification", Map(
+		"Type", "ok",
+		"OnYes", ""
+	)
+	)
+)
+}
+; 	Hotkey("!F1", (*) => SendNotification("This is a test notification", Map(
+; 		"Type", "yesno",
+; 		"OnYes", SendNotification.Bind("You clicked Yes!", Map(
+; 			"Type", "info",
+; 			"Title", "Debug Notification",
+; 			"OnYes", "",
+; 			"OnNo", "",
+; 			"Duration", 5000,
+; 		)),
+; 		"OnNo", SendNotification.Bind("You clicked No!", Map(
+; 			"Type", "info",
+; 			"Title", "Debug Notification",
+; 			"OnYes", "",
+; 			"OnNo", "",
+; 			"Duration", 5000,
+; 		)),
+; )))
+
+debugNotif(msg := "1", title := "", options := "16", duration := 2) {
+	SendNotification(msg, Map(
+		"Type", "info",
+		"OnYes", "",
+		"OnNo", "",
+		"Duration", 5000,
+		"Title", title,
+	))
+	; SendNotification(msg, title, options, duration)
 }
 
 HideTrayTip() {
@@ -3986,58 +4238,56 @@ JoinArray(arr, delim := "") {
 ; ###### Registry ###### ;
 ; ###################### ;
 
-global Keys := Map()
-
-Keys["~W"] := Map()
-Keys["~W"]["Function"] := isMouseClickingOnTargetWindow.Bind("W", false)
-
-Keys["~W"] := Map()
-Keys["~W"]["Function"] := isMouseClickingOnTargetWindow.Bind("W", false)
-
-Keys["~A"] := Map()
-Keys["~A"]["Function"] := isMouseClickingOnTargetWindow.Bind("A", false)
-
-Keys["~S"] := Map()
-Keys["~S"]["Function"] := isMouseClickingOnTargetWindow.Bind("S", false)
-
-Keys["~D"] := Map()
-Keys["~D"]["Function"] := isMouseClickingOnTargetWindow.Bind("D", false)
-
-Keys["~Space"] := Map()
-Keys["~Space"]["Function"] := isMouseClickingOnTargetWindow.Bind("Space", false)
-
-Keys["~Left"] := Map()
-Keys["~Left"]["Function"] := isMouseClickingOnTargetWindow.Bind("Left", false)
-
-Keys["~Right"] := Map()
-Keys["~Right"]["Function"] := isMouseClickingOnTargetWindow.Bind("Right", false)
-
-Keys["~Up"] := Map()
-Keys["~Up"]["Function"] := isMouseClickingOnTargetWindow.Bind("Up", false)
-
-Keys["~Down"] := Map()
-Keys["~Down"]["Function"] := isMouseClickingOnTargetWindow.Bind("Down", false)
-
-Keys["~/"] := Map()
-Keys["~/"]["Function"] := isMouseClickingOnTargetWindow.Bind("/", false)
-
-Keys["~LButton"] := Map()
-Keys["~LButton"]["Function"] := isMouseClickingOnTargetWindow.Bind("LButton", false)
-
-Keys["~RButton"] := Map()
-Keys["~RButton"]["Function"] := isMouseClickingOnTargetWindow.Bind("RButton", false)
-
-Keys["~WheelUp"] := Map()
-Keys["~WheelUp"]["Function"] := isMouseClickingOnTargetWindow.Bind("WheelUp", true)
-
-Keys["~WheelDown"] := Map()
-Keys["~WheelDown"]["Function"] := isMouseClickingOnTargetWindow.Bind("WheelDown", true)
-
-Keys["~!BackSpace"] := Map()
-Keys["~!BackSpace"]["Function"] := ToggleHide_Hotkey.Bind()
-
-Keys["~!\"] := Map()
-Keys["~!\"]["Function"] := cooldownFailsafe.Bind()
+global Keys := Map(
+	"~W", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("W", false)
+	),
+	"~A", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("A", false)
+	),
+	"~S", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("S", false)
+	),
+	"~D", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("D", false)
+	),
+	"~Space", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("Space", false)
+	),
+	"~Left", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("Left", false)
+	),
+	"~Right", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("Right", false)
+	),
+	"~Up", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("Up", false)
+	),
+	"~Down", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("Down", false)
+	),
+	"~/", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("/", false)
+	),
+	"~LButton", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("LButton", false)
+	),
+	"~RButton", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("RButton", false)
+	),
+	"~WheelUp", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("WheelUp", true)
+	),
+	"~WheelDown", Map(
+		"Function", isMouseClickingOnTargetWindow.Bind("WheelDown", true)
+	),
+	"~!BackSpace", Map(
+		"Function", ToggleHide_Hotkey.Bind()
+	),
+	"~!\", Map(
+		"Function", cooldownFailsafe.Bind()
+	)
+)
 
 cooldownFailsafe(*) {
 	ToggleCore(,1)
