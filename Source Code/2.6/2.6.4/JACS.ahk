@@ -2930,111 +2930,95 @@ class math {
 	}
 }
 
-class color3 {
-	static RGB(r, g, b) {
-		return (r << 16) | (g << 8) | b
-	}
-	static Hex(hex) {
-		return ((0xFF0000 & hex) >> 16, (0x00FF00 & hex) >> 8, (0x0000FF & hex))
-	}
-	static RGBToHex(r, g, b) {
-		return Format("#{1:02X}{2:02X}{3:02X}", r, g, b)
-	}
-	static HexToRGB(hex) {
-		hex := StrReplace(hex, "#")  ; Remove leading '#' if present
-		if (StrLen(hex) != 6)
-			throw Error("Invalid hex color string. Must be 6 characters.")
-
-		r := Integer("0x" SubStr(hex, 1, 2))
-		g := Integer("0x" SubStr(hex, 3, 2))
-		b := Integer("0x" SubStr(hex, 5, 2))
-		
-		return [r, g, b]
-	}
-	static RGBToHSV(r, g, b) {
-		local max := Max(r, g, b)
-		local min := Min(r, g, b)
-		local delta := max - min
-		local h := 0, s := 0, v := max
-		
-		if (delta != 0) {
-			s := delta / max
-			if (max == r) {
-				h := (g - b) / delta
-			} else if (max == g) {
-				h := 2 + (b - r) / delta
-			} else {
-				h := 4 + (r - g) / delta
-			}
-			h := Mod(h * 60, 360)
-		}
-		
-		return (h, s * 100, v * 100)
-	}
-	static HSVToRGB(h, s, v) {
-		local r, g, b
-		s := s / 100
-		v := v / 100
-		
-		local c := v * s
-		local x := c * (1 - Abs(Mod(h / 60, 2) - 1))
-		local m := v - c
-		
-		if (h < 60) {
-			r := c
-			g := x
-			b := 0
-		} else if (h < 120) {
-			r := x
-			g := c
-			b := 0
-		} else if (h < 180) {
-			r := 0
-			g := c
-			b := x
-		} else if (h < 240) {
-			r := 0
-			g := x
-			b := c
-		} else if (h < 300) {
-			r := x
-			g := 0
-			b := c
-		} else {
-			r := c
-			g := 0
-			b := x
-		}
-		
-		return (math.round((r + m) * 255), math.round((g + m) * 255), math.round((b + m) * 255))
-	}
+class Color3 {
 	static new(r, g, b) {
-		return color3.RGB(r * 255, g * 255, b * 255)
+		return Color3.fromRGB(math.clamp(r,,1) * 255, math.clamp(g,,1) * 255, math.clamp(b,,1) * 255)
 	}
+
+	static fromRGB(r, g, b) {
+		return Format("{1:02X}{2:02X}{3:02X}", Round(r), Round(g), Round(b))
+	}
+
+	static fromHex(hex) {
+		if IsA(hex, "string") && SubStr(hex, 1, 1) == "#"
+			hex := "0x" . SubStr(hex, 2)
+		hex := Integer(hex)
+		r := (hex >> 16) & 0xFF
+		g := (hex >> 8) & 0xFF
+		b := hex & 0xFF
+		return [r / 255, g / 255, b / 255]
+	}
+
+	static toRGB(hex) {
+		if IsA(hex, "string") && SubStr(hex, 1, 1) == "#"
+			hex := "0x" . SubStr(hex, 2)
+		hex := Integer(hex)
+		return [
+			(hex >> 16) & 0xFF,
+			(hex >> 8) & 0xFF,
+			hex & 0xFF
+		]
+	}
+
+	static toHSV(r, g, b, &h, &s, &v) {
+		r := r / 255, g := g / 255, b := b / 255
+		local maximum := Max(r, g, b), minimum := Min(r, g, b)
+		local delta := maximum - minimum
+		h := 0, s := 0, v := maximum
+	
+		if (delta != 0) {
+			if (maximum == r)
+				h := Mod((g - b) / delta, 6)
+			else if (maximum == g)
+				h := ((b - r) / delta) + 2
+			else
+				h := ((r - g) / delta) + 4
+	
+			h := h / 6 ; Convert from 0–360 → 0–1 range
+			if (h < 0)
+				h += 1
+			s := delta / maximum
+		}
+
+		return this.new(h, s, v)
+	}	
 }
 
-Print(val, indent := "") {
+
+
+Print(vals*) {
 	local output := ""
-	if (!IsObject(val))
-		return val . "`n"
-	
+	for _, val in vals
+		output .= PrintValue(val, "")
+	return output
+}
+
+; Internal recursive handler
+PrintValue(val, indent) {
+	local output := ""
+
+	if (!IsObject(val)) {
+		return indent . val . "`n"
+	}
+
 	if (IsA(val, "array"))
-		output .= indent . "Array:" . "`n"
+		output .= indent . "Array:`n"
 	else if (IsA(val, "function"))
-		output .= indent . "Function:" . "`n"
+		output .= indent . "Function:`n"
 	else if (IsA(val, "gui"))
-		output .= indent . "GUI:" . "`n"
+		output .= indent . "GUI:`n"
 	else if (IsA(val, "object"))
-		output .= indent . "Object:" . "`n"
+		output .= indent . "Object:`n"
 	else
-		output .= indent . "Unknown:" . "`n"
-	
+		output .= indent . "Unknown:`n"
+
 	for key, item in val {
 		if (IsObject(item))
-			output .= indent . "  " . key . ":`n" . Print(item, indent . "	")
+			output .= indent . "  " . key . ":`n" . PrintValue(item, indent . "    ")
 		else
 			output .= indent . "  " . key . ": " . item . "`n"
 	}
+
 	return output
 }
 
@@ -3889,7 +3873,13 @@ debugFuncs(*) {
 				"Title", "JACS - Debug Notification",
 			)),
 		)),
-		"!F6", (*) => SendNotification(Print(color3.HexToRGB("191919"))),
+		"!F6", (*) => (
+			h := 0, s := 0, v := 0
+			SendNotification(Print(color3.toHSV(255, 90, 90, &h, &s, &v), tick()), Map(
+				"Type", "info",
+				"Title", "JACS - Debug Notification",
+			))
+		),
 		"!F7", (*) => SendNotification(Print(tick())),
 	)
 
