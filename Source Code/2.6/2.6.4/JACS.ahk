@@ -24,11 +24,6 @@ global SearchingIcon := localScriptDir "images\icons\Searching.ico"
 global initializingIcon := localScriptDir "images\icons\Initializing.ico"
 
 global doDebug := true
-global debugKey := "^F12"
-
-if doDebug {
-	Hotkey(debugKey, ReloadScript, "On")
-}
 
 sidebarData := [
 	{
@@ -176,10 +171,9 @@ global MouseClicks := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "Mo
 global ShowingExtrasUI := false 
 global warningRequested := false
 
-; Light/Dark mode colors
-global updateTheme := true
 
-; global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
+global fadeLock := false
+global updateTheme := true
 global intWindowColor := "404040"
 global intControlColor := "606060"
 global intProgressBarColor := "757575"
@@ -193,8 +187,6 @@ global buttonFontWeight := readIniProfileSetting(ProfilesDir, SelectedProcessExe
 global buttonFont := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontStyle", "Consolas")
 
 global wasActiveWindow := false
-global ControlResize := (Target, position, size) => ResizeMethod(Target, position, size)
-global MoveControl := (Target, position, size) => MoveMethod(Target, position, size)
 global AcceptedWarning := readIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", false, "bool") and CreateGui() or createWarningUI()
 global tempUpdateFile := ""
 
@@ -1701,8 +1693,6 @@ CreateScriptSettingsGUI(*) {
 CreateExtrasGUI(*) {
 	global ProfilesDir
 
-	global MoveControl
-	global ControlResize
 	global warningRequested
 	global MainUI_PosX
 	global MainUI_PosY
@@ -2032,26 +2022,51 @@ SaveMainUIPosition(*) {
 	global monitorNum
 	global ProfilesDir
 	global SelectedProcessExe
+	
+	WinGetPos(&x, &y,,,"ahk_id" MainUI.Hwnd)
 
 	local exists := false
-	try WinExist(MainUI.Title) ? true : false
 
-	if !exists
+	try
+		exists := WinExist(MainUI.Title) and true
+	catch
+		exists := false
+
+
+	local needsUpdate := false
+	if x == -32000 or !exists {
+		x := Integer(A_ScreenWidth / 2)
+		needsUpdate := true
+	}
+	if y == -32000 or !exists {
+		y := Integer(A_ScreenHeight / 2)
+		needsUpdate := true
+	}
+
+	if needsUpdate {
+		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", x)
+		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", y)
+		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", Integer(A_ScreenWidth / 2), "int")
+		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenWidth / 2), "int")
+
+		; if not exiting, reload the GUI to apply the new position
+		if !MainUI
+			return
+		if MainUI and 
+			MainUI.Show("X" . x . " Y" . y)
+		
 		return
+	}
 
-	local winState := WinGetMinMax(MainUI.Title) ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
-	if winState == -1
-		return
 
-    WinGetPos(&x, &y,,,"ahk_id" MainUI.Hwnd)
     monitorNum := MonitorGetNumberFromPoint(x, y)
 
     updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", x)
 	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", y)
     updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "monitorNum", monitorNum)
 
-	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", A_ScreenWidth / 2, "int")
-	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", A_ScreenHeight / 2, "int")
+	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", Integer(A_ScreenWidth / 2), "int")
+	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenWidth / 2), "int")
 }
 
 UpdateTimerLabel(*) {
@@ -2124,7 +2139,6 @@ ResetCooldown(*) {
 
 	if CoreToggleButton.Text != "Auto-Clicker: " activeText_Core
 		CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
-	; CoreToggleButton.Redraw()
 
 	if isActive == 2 and FindTargetHWND()
 		ToggleCore(,3)
@@ -2175,8 +2189,8 @@ ToggleCore(optionalControl?, forceState?, *) {
 	isActive := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isActive", 0, "int")
 	activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
 	
-	CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
-	CoreToggleButton.Redraw()
+	if CoreToggleButton and CoreToggleButton.Text != "Auto-Clicker: " activeText_Core
+		CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
 
 	setTrayIcon(icons[isActive].Icon)
 	; CreateGui()
@@ -2314,58 +2328,6 @@ RunCore(*) {
 }
 
 ; ################################ ;
-; ###### Button Formatting ####### ;
-; ################################ ;
-
-ResizeMethod(TargetButton, optionalX, objInGroup) {
-	local parentUI := TargetButton.Gui
-	
-	; Calculate initial control width based on GUI width and margins
-	local X := 0, Y := 0, UI_Width := 0, UI_Height := 0
-	local UI_Margin_Width := UI_Width-parentUI.MarginX
-	
-	; Get the client area dimensions
-	parentUI.GetPos(&X, &Y, &UI_Width, &UI_Height)
-	NewButtonWidth := (UI_Width - (2 * UI_Margin_Width))
-	
-	; Prevent negative button widths
-	if (NewButtonWidth < UI_Margin_Width/(objInGroup or 1)) {
-		NewButtonWidth := UI_Margin_Width/(objInGroup or 1)  ; Set to 0 if the width is negative
-	}
-	
-	OldButtonPosX := 0, OldY := 0, OldWidth := 0, OldHeight := 0
-	TargetButton.GetPos(&OldButtonPosX, &OldY, &OldWidth, &OldHeight)
-	
-	; Move
-	TargetButton.Move(optionalX > 0 and 0 + (UI_Width / optionalX) or 0 + parentUI.MarginX, , )
-}
-
-MoveMethod(Target, position, size) {
-	local parentUI := Target.Gui
-	
-	local X := 0, Y := 0, UI_Width := 0, UI_Height := 0
-	local UI_Margin_Width := UI_Width-parentUI.MarginX
-	
-	; Calculate initial control width based on GUI width and margins
-	X := 0, Y := 0, UI_Width := 0, UI_Height := 0
-	
-	; Get the client area dimensions
-	parentUI.GetPos(&X, &Y, &UI_Width, &UI_Height)
-	NewButtonWidth := (UI_Width - (2 * UI_Margin_Width))
-	
-	; Prevent negative button widths
-	if (NewButtonWidth < UI_Margin_Width/(size or 1)) {
-		NewButtonWidth := UI_Margin_Width/(size or 1)  ; Set to 0 if the width is negative
-	}
-	
-	OldButtonPosX := 0, OldY := 0, OldWidth := 0, OldHeight := 0
-	Target.GetPos(&OldButtonPosX, &OldY, &OldWidth, &OldHeight)
-	
-	; Resize
-	Target.Move(position > 0 and 0 + (UI_Width / position) or 0 + parentUI.MarginX, , position > 0 and 0 + (UI_Width / position) or 0 + parentUI.MarginX)
-}
-
-; ################################ ;
 ; ############ Sounds ############ ;
 ; ################################ ;
 
@@ -2401,15 +2363,23 @@ ToggleSound(*) {
 	return
 }
 
-IsFunc(obj) {
-	if (obj is Func) {
-		return true
-	} else if (obj is String) {
-		; Check if the string is a valid function name
-		return IsFunc(obj)
-	} else {
-		return false
-	}
+; ################################ ;
+; ####### Window Functions ####### ;
+; ################################ ;
+MonitorGetNumberFromPoint(x, y) {
+    ; MONITOR_DEFAULTTONEAREST = 2
+    hMonitor := DllCall("User32\MonitorFromPoint", "int64", (y << 32) | (x & 0xFFFFFFFF), "uint", 2, "ptr")
+    return MonitorGetIndexFromHandle(hMonitor)
+}
+
+MonitorGetIndexFromHandle(hMonitor) {
+    SysGetMonitorCount := SysGet(80)
+    Loop SysGetMonitorCount {
+        SysGetMonitorHandle := SysGet(MonitorHandle := 66 + A_Index - 1)
+        if (SysGetMonitorHandle = hMonitor)
+            return A_Index
+    }
+    return 1 ; fallback to primary monitor
 }
 
 SetRoundedCorners(hwnd, radius := 12) {
@@ -2427,25 +2397,27 @@ SetRoundedCorners(hwnd, radius := 12) {
 		, "int", true)
 }
 
-
-; ################################ ;
-; ####### Window Functions ####### ;
-; ################################ ;
-; Gets the monitor index number based on a screen coordinate
-MonitorGetNumberFromPoint(x, y) {
-    ; MONITOR_DEFAULTTONEAREST = 2
-    hMonitor := DllCall("User32\MonitorFromPoint", "int64", (y << 32) | (x & 0xFFFFFFFF), "uint", 2, "ptr")
-    return MonitorGetIndexFromHandle(hMonitor)
+moveCenterOfControl(ctrl, targetX, targetY) {
+	local center := ctrl.GetPos(&startX, &startY, &width, &height)
+	local centerX := startX + (width / 2)
+	local centerY := startY + (height / 2)
+	local offsetX := targetX - centerX
+	local offsetY := targetY - centerY
+	
+	ctrl.Move(offsetX, offsetY)
 }
 
-MonitorGetIndexFromHandle(hMonitor) {
-    SysGetMonitorCount := SysGet(80)
-    Loop SysGetMonitorCount {
-        SysGetMonitorHandle := SysGet(MonitorHandle := 66 + A_Index - 1)
-        if (SysGetMonitorHandle = hMonitor)
-            return A_Index
-    }
-    return 1 ; fallback to primary monitor
+IsWindowVisibleToUser(hWnd) {
+	; Ensure it's a number and not null
+	if !IsInteger(hWnd) || hWnd = 0
+		return false
+
+	; Ensure the HWND exists and is a real window
+	if !DllCall("IsWindow", "ptr", hWnd)
+		return false
+
+	; Check visibility
+	return DllCall("IsWindowVisible", "ptr", hWnd, "int")
 }
 
 ; ################################ ;
@@ -2618,6 +2590,14 @@ ApplyThemeToGui(guiObj, themeMap) {
 						fs := themeMap["ButtonFontSize"]
 						font := themeMap["ButtonFontStyle"]
 						fw := themeMap["ButtonFontWeight"]
+					} else if InStr(ctrl.Name, "InvisBG_") {	
+						fg := themeMap["ButtonTextColor"]
+						fs := themeMap["ButtonFontSize"]
+						font := themeMap["ButtonFontStyle"]
+						fw := themeMap["ButtonFontWeight"]
+
+						opt := "BackgroundTrans" (fg ? " c" fg : "")
+						continue
 					}
 
 					bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
@@ -2735,6 +2715,7 @@ isMouseClickingOnTargetWindow(key?, override*) {
 }
 
 ClickWindow(process) {
+	global SelectedProcessExe
 	global wasActiveWindow := false
 	global MouseSpeed
 	global MouseClickRateOffset
@@ -2798,8 +2779,17 @@ ClickWindow(process) {
 	if (hoverWindow and (hoverWindow != process and hoverWindow != WinGetID(process))) and activeTitle
 		ActivateWindow()
 
-	; Check pixel color in radius
-	doClick(MouseClicks or 5)
+	if SelectedProcessExe {
+		local allWindows := WinGetList("ahk_exe " SelectedProcessExe)
+		for ID in allWindows {
+			local hwnd := allWindows%A_Index%
+			if (hwnd != process) {
+				MouseMove(0, 0, 0)
+				doClick(MouseClicks or 5)
+			}
+		}
+	}
+	; doClick(MouseClicks or 5)
 }
 
 isPixelColorInRadius(x, y, color, radius) {
@@ -2808,9 +2798,26 @@ isPixelColorInRadius(x, y, color, radius) {
 	return (pixelColor = color && distance <= radius)
 }
 
-; ################################ ;
-; ######### Math Library ######### ;
-; ################################ ;
+; ############################### ;
+; ########### Classes ########### ;
+; ############################### ;
+
+class arr extends Array {
+	GetIndex(value) {
+		for pos, val in this {
+			if (value == val)
+				return pos
+		}
+		return false
+	}
+
+	GetValue(index) {
+		for pos, val in this
+			if (index == pos)
+				return val or true
+		return false
+	}
+}
 
 class math {
     static clamp(number, minimum, maximum) {
@@ -2908,39 +2915,19 @@ class math {
 	}
 }
 
-Lerp(start, stop, step) {
-    return start + (stop - start) * (step / 100)
-}
-
 ; ################################ ;
 ; ####### Extra Functions ######## ;
 ; ################################ ;
 
-moveCenterOfControl(ctrl, targetX, targetY) {
-	local center := ctrl.GetPos(&startX, &startY, &width, &height)
-	local centerX := startX + (width / 2)
-	local centerY := startY + (height / 2)
-	local offsetX := targetX - centerX
-	local offsetY := targetY - centerY
-	
-	ctrl.Move(offsetX, offsetY)
-
-	; check if the control can be redrawn
-	if ctrl.HasProp("Redraw")
-		ctrl.Redraw()
+Lerp(start, stop, step) {
+    return start + (stop - start) * (step / 100)
 }
 
-IsWindowVisibleToUser(hWnd) {
-	; Ensure it's a number and not null
-	if !IsInteger(hWnd) || hWnd = 0
-		return false
-
-	; Ensure the HWND exists and is a real window
-	if !DllCall("IsWindow", "ptr", hWnd)
-		return false
-
-	; Check visibility
-	return DllCall("IsWindowVisible", "ptr", hWnd, "int")
+IsFunc(obj) {
+	if (obj is Func)
+		return true
+	
+	return false
 }
 
 MeasureTextWidth(ctrl, text) {
@@ -3367,12 +3354,15 @@ getMapLength(map) {
 }
 
 getUniqueID() {
-	static counter := 0
-	counter++
-	return counter
-}
+	static IDs := arr()
+	local pickedID := math.random(1, 1000000)
+	if  IDs.GetValue(pickedID) {
+		return getUniqueID()
+	}
+	IDs.Push(pickedID)
 
-global fadeLock := false
+	return pickedID
+}
 
 FadeWindow(hwnd, direction := "in", duration := 300, autoClose := true) {
     global fadeLock
@@ -3415,31 +3405,29 @@ easeInOutSine(t) {
 
 SendNotification(message, config := Map(
 	"Type", "info",
-	"OnYes", "",
-	"OnNo", "",
-	"OnOk", "",
-	"OnCancel", "",
-	"OnClose", "",
+	"OnYes", "", "OnNo", "",
+	"OnOk", "", "OnCancel", "", "OnClose", "",
 	"Duration", 4000,
 	"Title", "JACS - Notification"
 )) {
-	static notificationGUIs := []                 ; Active popups
-	static notificationQueue := Map()             ; Queued notifications (keyed by message)
-	static notificationQueueKeys := []            ; Ordered queue keys
-	static closeFunctions := Map()
-	static slotStates := [false, false, false]
-	static slotAssignments := Map()
-	static themeFunctions := Map()
+	static notificationQueue := Map()				; Pending notifications (unique key → data)
+	static notificationQueueKeys := []				; FIFO list of queued keys
+	static closeFunctions := Map()					; Timers for closing
+	static themeFunctions := Map()					; Timers for theme updates
+	static slotAssignments := Map()					; hwnd → slotIndex
+	static notificationGUIs := []					; Active notification windows
+	static notificationCounter := 0					; Unique counter for queue keys
+	static slotStates := [false, false, false]		; Slot availability (3 slots)
 
 	global isActive
 	global intWindowColor, intControlColor, intProgressBarColor
 	global ControlTextColor, linkColor, HeaderHeight
 	global buttonHeight, buttonFontSize, buttonFontWeight, buttonFont
+
 	local popupWidth := 300, popupHeight := 150
 	local popupMarginX := 10, popupMarginY := 10
-	
 
-	; --- Prevent duplicate messages in active GUIs ---
+	; Skip if already shown in active GUIs 
 	for _, hwnd in notificationGUIs {
 		if hwnd && WinExist(hwnd) {
 			ui := GuiFromHwnd(hwnd)
@@ -3450,18 +3438,22 @@ SendNotification(message, config := Map(
 		}
 	}
 
-	; --- Prevent duplicate queued notifications ---
-	if notificationQueue.Has(message)
-		return
+	; Skip if message is already queued 
+	for _, key in notificationQueueKeys {
+		if notificationQueue.Has(key) && notificationQueue[key]["Message"] == message
+			return
+	}
 
-	; --- Too many active notifications, add to queue ---
+	; If 3 active, queue instead 
 	if notificationGUIs.Length >= 3 {
-		notificationQueue.Set(message, Map("Message", message, "Config", config))
-		notificationQueueKeys.Push(message)
+		notificationCounter += 1
+		uniqueKey := Format("{}_{}", A_TickCount, notificationCounter)
+		notificationQueue[uniqueKey] := Map("Message", message, "Config", config)
+		notificationQueueKeys.Push(uniqueKey)
 		return
 	}
 
-	; --- Find free slot ---
+	; Find free visual slot (0 = none) 
 	local slotIndex := 0
 	for i, used in slotStates {
 		if !used {
@@ -3470,158 +3462,169 @@ SendNotification(message, config := Map(
 		}
 	}
 	if slotIndex = 0 {
-		notificationQueue.Set(message, Map("Message", message, "Config", config))
-		notificationQueueKeys.Push(message)
+		notificationCounter += 1
+		uniqueKey := Format("{}_{}", A_TickCount, notificationCounter)
+		notificationQueue[uniqueKey] := Map("Message", message, "Config", config)
+		notificationQueueKeys.Push(uniqueKey)
 		return
 	}
 	slotStates[slotIndex] := true
 
-	; --- Config Extraction ---
-	local type := config.Has("Type") ? config["Type"] : "info"
-	local duration := config.Has("Duration") ? config["Duration"] : 5000
-	local onYes := config.Has("OnYes") ? config["OnYes"] : ""
-	local onNo := config.Has("OnNo") ? config["OnNo"] : ""
-	local onOk := config.Has("OnOk") ? config["OnOk"] : ""
-	local onCancel := config.Has("OnCancel") ? config["OnCancel"] : ""
-	local onClose := config.Has("OnClose") ? config["OnClose"] : ""
-	local title := config.Has("Title") ? config["Title"] : "JACS"
+	; Config values 
+	local type     := config.Get("Type", "info")
+	local duration := config.Get("Duration", 4000)
+	local onYes    := config.Get("OnYes", "")
+	local onNo     := config.Get("OnNo", "")
+	local onOk     := config.Get("OnOk", "")
+	local onCancel := config.Get("OnCancel", "")
+	local onClose  := config.Get("OnClose", "")
+	local title    := config.Get("Title", "JACS")
 
-	; --- GUI Creation ---
+	; Create GUI 
 	MonitorGetWorkArea(1, &monLeft, &monTop, &monRight, &monBottom)
 	screenW := monRight - monLeft
 	screenH := monBottom - monTop
+	local shellX := monRight - popupWidth - 25
+	local shellY := screenH / 2
+	local slotYOffsets := [shellY + screenH * 0.25, shellY, shellY - screenH * 0.25]
+	shellY := slotYOffsets[slotIndex]
 
-	local NotiShellGui := Gui("+AlwaysOnTop +OwnDialogs -Caption +ToolWindow +LastFound +")
-	local id := NotiShellGui.Hwnd
-	notificationGUIs.Push(id)
-
-	local NotiInnerGui := Gui("+Parent" id " -Caption +ToolWindow +LastFound +E0x20")
-	NotiInnerGui.OnEvent("Escape", closeNotification)
-	NotiShellGui.OnEvent("Escape", closeNotification)
+	NotiShellGui := Gui("+AlwaysOnTop -Caption +ToolWindow +LastFound")
+	NotiShellGui.BackColor := getActiveStatusColor()
+	NotiInnerGui := Gui("+Parent" NotiShellGui.Hwnd " -Caption +ToolWindow +LastFound +E0x20")
 	NotiInnerGui.MarginX := popupMarginX
 	NotiInnerGui.MarginY := popupMarginY
 	NotiInnerGui.BackColor := intWindowColor
 	NotiInnerGui.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
 
-	local innerWidth := popupWidth - (popupMarginX * 2)
-	local innerHeight := popupHeight - (popupMarginY * 2) - buttonHeight
-	local titleLabel := NotiInnerGui.Add("Text", "Center vNotificationTitle w" innerWidth*0.95 " h" HeaderHeight, title)
-	local messageBox := NotiInnerGui.Add("Text", "Center xm w" innerWidth - popupMarginX, message)
-	titleLabel.SetFont("s16 c" ControlTextColor " w" buttonFontWeight, "Ink Free")
-	messageBox.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-
-	local messageBoxSize := getControlSize(messageBox)
-	popupHeight := (messageBoxSize.H * 2.5) + buttonHeight + HeaderHeight + (popupMarginY * 2)
-
-	; --- Theme + Timer ---
-	themeFunctions[id] := SetTimer(updateTheme, 500, id)
-	closeFunctions[id] := SetTimer(() => closeNotification(id), -duration, id)
-
-	; --- Buttons ---
-	local double_buttonWidth := (innerWidth/1.5 - (popupMarginX * 2)) / 2
-	local single_buttonWidth := (innerWidth/1.5 - (popupMarginX * 2)) / 2
-	local double_positionX1 := ((innerWidth - (popupMarginX)) / 2) - (innerWidth*0.33)
-	local double_positionX2 := ((innerWidth - (popupMarginX)) / 2) - (innerWidth*0.33) + double_buttonWidth + (popupMarginX/2)
-	local single_positionX := (innerWidth/1.5 - (popupMarginX)) / 2
-
-	local timeRemaining := duration
-	decrementTime(*) {
-		timeRemaining -= 1000
-		if timeRemaining <= 0 {
-			closeNotification(id)
-			return
-		}
-	}
-	SetTimer(decrementTime, 1000, id)
-
-	if (type = "yesno") {
-		local btnYes := NotiInnerGui.Add("Button", "xm+" double_positionX1 " y" popupHeight - buttonHeight - popupMarginY " h" buttonHeight " w" double_buttonWidth, "Yes")
-		local btnNo  := NotiInnerGui.Add("Button", "xm+" double_positionX2 " y" popupHeight - buttonHeight - popupMarginY " h" buttonHeight " w" double_buttonWidth, "No")
-		btnYes.OnEvent("Click", (*) => (
-			SetTimer(() => closeNotification(id), -1),
-			(onYes is Func || onYes is BoundFunc) ? SetTimer((*) => onYes.Call(), -(duration - timeRemaining), id) : ""
-		))
-		btnNo.OnEvent("Click", (*) => (
-			SetTimer(() => closeNotification(id), -1),
-			(onNo is Func || onNo is BoundFunc) ? SetTimer((*) => onNo.Call(), -(duration - timeRemaining), id) : ""
-		))
-	} else if (type = "ok") {
-		local btnOk := NotiInnerGui.Add("Button", "xm+" single_positionX " y" popupHeight - buttonHeight - popupMarginY " h" buttonHeight " w" single_buttonWidth, "OK")
-		btnOk.OnEvent("Click", (*) => (
-			SetTimer(() => closeNotification(id), -1),
-			(onOk is Func || onOk is BoundFunc) ? SetTimer((*) => onOk.Call(), -(duration - timeRemaining), id) : ""
-		))
-	} else if (type = "cancel") {
-		local btnCancel := NotiInnerGui.Add("Button", "xm+" innerWidth*0.35 " y" popupHeight - buttonHeight - popupMarginY " h" buttonHeight " w" single_buttonWidth, "Cancel")
-		btnCancel.OnEvent("Click", (*) => (
-			SetTimer(() => closeNotification(id), -1),
-			(onCancel is Func || onCancel is BoundFunc) ? SetTimer((*) => onCancel.Call(), -(duration - timeRemaining), id) : ""
-		))
-	} else if (type = "info") {
-		; skip
-	} else {
-		local btnClose := NotiInnerGui.Add("Button", "xm+" innerWidth*0.35 " y" popupHeight - buttonHeight - popupMarginY " h" buttonHeight " w" single_buttonWidth, "Close")
-		btnClose.OnEvent("Click", (*) => (
-			SetTimer(() => closeNotification(id), -1, id),
-			(onClose is Func || onClose is BoundFunc) ? SetTimer((*) => onClose.Call(), -(duration - timeRemaining), id) : ""
-		))
-	}
-
-	; --- Position + Animation ---
-	local shellX := monRight - popupWidth - 25
-	local shellY := screenH / 2
-	local slotYOffsets := [shellY + (shellY * 0.5), shellY, shellY - (shellY * 0.5)]
-	shellY := slotYOffsets[slotIndex]
+	id := NotiShellGui.Hwnd
+	notificationGUIs.Push(id)
 	slotAssignments[id] := slotIndex
 
-	NotiShellGui.BackColor := getActiveStatusColor()
-	ApplyThemeToGui(NotiInnerGui, LoadThemeFromINI(currentTheme))
-	WinSetTransparent(0, id)
+	NotiInnerGui.OnEvent("Escape", closeNotification)
+	NotiShellGui.OnEvent("Escape", closeNotification)
+
+	innerW := popupWidth - popupMarginX * 2
+	titleLabel := NotiInnerGui.Add("Text", "Center w" innerW " h" HeaderHeight, title)
+	titleLabel.SetFont("s16 c" ControlTextColor " w" buttonFontWeight, "Ink Free")
+
+	messageBox := NotiInnerGui.Add("Text", "Center xm w" innerW - popupMarginX, message)
+	messageBox.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+	size := getControlSize(messageBox)
+
+	popupHeight := size.H * 2.5 + buttonHeight + HeaderHeight + popupMarginY * 2
 	NotiShellGui.Show("NoActivate x" shellX " y" shellY " w" popupWidth " h" popupHeight)
-	NotiInnerGui.Show("NoActivate w" innerWidth " h" popupHeight)
+	NotiInnerGui.Show("NoActivate w" innerW " h" popupHeight)
+
 	SetRoundedCorners(id, 16)
 	SetRoundedCorners(NotiInnerGui.Hwnd, 16)
+	ApplyThemeToGui(NotiInnerGui, LoadThemeFromINI(currentTheme))
+	WinSetTransparent(0, id)
 	SetTimer((*) => FadeWindow(id, "in", 500), -1, id)
 
-	getActiveStatusColor() {
-		return isActive == 1 ? "df5b5b"
-			: isActive == 2 ? "e0e25b"
-			: isActive == 3 ? "49e649"
-			: "68c1da"
+	themeFunctions[id] := SetTimer(() => NotiShellGui.BackColor := getActiveStatusColor(), 500, id)
+	closeFunctions[id] := SetTimer(() => closeNotification(id), -duration, id)
+
+	; Add buttons
+	btnY := popupHeight - buttonHeight - popupMarginY
+	singleW := innerW / 2.5
+	singleX := (innerW - singleW) / 2
+	doubleW := innerW / 3
+	doubleX1 := (innerW - doubleW * 2 - popupMarginX / 2) / 2
+	doubleX2 := doubleX1 + doubleW + popupMarginX / 2
+
+	if (type = "yesno") {
+		btnYes := NotiInnerGui.Add("Button","vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", doubleX1, btnY, doubleW, buttonHeight), "Yes")
+		btnNo  := NotiInnerGui.Add("Button","vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", doubleX2, btnY, doubleW, buttonHeight), "No")
+		btnYes.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+		btnNo.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+		btnYes.Opt("BackgroundTrans")
+		btnNo.Opt("BackgroundTrans")
+
+		btnYes.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onYes) ? onYes.Call() : ""))
+		btnNo.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onNo) ? onNo.Call() : ""))
+	} else if (type = "ok") {
+		btnOk := NotiInnerGui.Add("Button", "vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "OK")
+		btnOk.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onOk) ? onOk.Call() : ""))
+	} else if (type = "cancel") {
+		btnCancel := NotiInnerGui.Add("Button", "vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Cancel")
+		btnCancel.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onCancel) ? onCancel.Call() : ""))
+	} else {
+		btnClose := NotiInnerGui.Add("Button", "vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Close")
+		btnClose.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onClose) ? onClose.Call() : ""))
 	}
 
-	updateTheme(*) {
-		local activeColor := getActiveStatusColor()
-		if NotiInnerGui.BackColor != activeColor
-			NotiShellGui.BackColor := activeColor
-	}
+	; Close & dequeue logic 
+	closeNotification(hwnd := id) {
+		if !slotAssignments.Has(hwnd)
+			return
+	
+		; Get current slot before removal
+		oldSlot := slotAssignments[hwnd]
+	
+		; Remove from GUI tracking
+		removeFromArray(notificationGUIs, hwnd)
+		closeFunctions.Delete(hwnd)
+		themeFunctions.Delete(hwnd)
+		SetTimer(() => FadeWindow(hwnd, "out", 500), -1, hwnd)
+		slotStates[oldSlot] := false
 
-	closeNotification(optionalCtrl := "") {
-		try {
-			local hwnd := optionalCtrl ? optionalCtrl : id
-			removeFromArray(notificationGUIs, hwnd)
-			closeFunctions.Delete(hwnd)
-			themeFunctions.Delete(hwnd)
-			SetTimer(() => FadeWindow(hwnd, "out", 500), -1, hwnd)
+		; Capture current assignments *before* modifying
+		local currentAssignments := slotAssignments.Clone()
 
-			; Free slot
-			if slotAssignments.Has(hwnd) {
-				slotIndex := slotAssignments[hwnd]
-				slotStates[slotIndex] := false
-				slotAssignments.Delete(hwnd)
-			}
+		; Move other notifications visually down if above the removed one
+		; for otherHwnd, thisSlot in currentAssignments {
+		; 	if otherHwnd == hwnd
+		; 		continue
+
+		; 	if thisSlot > oldSlot{
+		; 		; Update tracking
+		; 		slotAssignments[otherHwnd] := thisSlot - 1
+		; 		slotStates[thisSlot] := false
+		; 		slotStates[thisSlot - 1] := true
+
+		; 		; Move window visually
+		; 		MonitorGetWorkArea(1, &left, &top, &right, &bottom)
+		; 		screenH := bottom
+		; 		shellY := screenH / 2
+		; 		slotYOffsets := [shellY + screenH * 0.25, shellY, shellY - screenH * 0.25]
+		; 		newY := slotYOffsets[thisSlot - 1]
+
+		; 		WinGetPos(&x, , &w, &h, hwnd)
+		; 		try WinMove(,, newY,,, hwnd)
+		; 	}
+		; }
+
+
+		; Now safe to remove the closed notification
+		slotAssignments.Delete(hwnd)
+	
+		; Pull next notification from queue if any
+		if notificationQueueKeys.Length > 0 {
+			nextKey := notificationQueueKeys.RemoveAt(1)
+			next := notificationQueue[nextKey]
+			notificationQueue.Delete(nextKey)
+			SendNotification(next["Message"], next["Config"])
 		}
+	}
+}
 
-		; Dequeue next notification if any
-		if getMapLength(notificationQueue) > 0 && notificationQueueKeys.Length > 0 {
-			try {
-				nextKey := notificationQueueKeys.RemoveAt(1)
-				next := notificationQueue.Get(nextKey)
-				notificationQueue.Delete(nextKey)
-				SendNotification(next["Message"], next["Config"])
-			}
+refreshArray(arr) {
+	local newArr := []
+	for _, item in arr {
+		if item != "" {
+			newArr.Push(item)
 		}
 	}
+	return newArr
+}
+
+getActiveStatusColor() {
+	global isActive
+	return isActive == 1 ? "df5b5b"
+		: isActive == 2 ? "e0e25b"
+		: isActive == 3 ? "49e649"
+		: "68c1da"
 }
 
 getControls(GUIObj) {
@@ -3691,66 +3694,63 @@ SlideGUI(GUIHwnd, x, y, duration := 200) {
 	}
 }
 
-if doDebug {
-	Hotkey("!F1", (*) => SendNotification("This is an `"ok`" test notification", Map(
-		"Type", "ok",
-		"Title", "JACS - Debug Notification",
-		"OnOk", (*) => SendNotification("You clicked OK!", Map(
-			"Type", "info",
+debugFuncs(*) {
+	local hotkeys := Map(
+		"!F12", (*) => ReloadScript(),
+		"^F12", (*) => ReloadScript(),
+		"!F1", (*) => SendNotification("This is an `"ok`" test notification", Map(
+			"Type", "ok",
 			"Title", "JACS - Debug Notification",
+			"OnOk", (*) => SendNotification("You clicked OK!", Map(
+				"Type", "info",
+				"Title", "JACS - Debug Notification",
+			)),
 		)),
-	))
+		"!F2", (*) => SendNotification("This is a `"yesno`" test notification", Map(
+			"Type", "yesno",
+			"OnYes", (*) => SendNotification("You clicked Yes!", Map(
+				"Title", "JACS - Debug Notification",
+				"Type", "info",
+			)),
+			"OnNo", (*) => SendNotification("You clicked No!", Map(
+				"Title", "JACS - Debug Notification",
+				"Type", "info",
+			)),
+		)),
+		"!F3", (*) => SendNotification("This is a `"cancel`" test notification", Map(
+			"Title", "JACS - Debug Notification",
+			"Type", "cancel",
+			"OnCancel", (*) => SendNotification("You clicked Cancel!", Map(
+				"Type", "info",
+				"Title", "JACS - Debug Notification",
+			)),
+		)),
+		"!F4", (*) => SendNotification("This is a `"info`" test notification", Map(
+			"Title", "JACS - Debug Notification",
+			"Type", "info",
+		)),
+		"!F5", (*) => SendNotification("This is a `"close`" test notification", Map(
+			"Title", "JACS - Debug Notification",
+			"Type", "close",
+			"OnClose", (*) => SendNotification("You clicked Close!", Map(
+				"Type", "info",
+				"Title", "JACS - Debug Notification",
+			)),
+		)),
+	)
 
-	Hotkey("!F2", (*) => SendNotification("This is a `"yesno`" test notification", Map(
-		"Type", "yesno",
-		"OnYes", (*) => SendNotification("You clicked Yes!", Map(
-			"Title", "JACS - Debug Notification",
-			"Type", "info",
-		)),
-		"OnNo", (*) => SendNotification("You clicked No!", Map(
-			"Title", "JACS - Debug Notification",
-			"Type", "info",
-		)),
-	)))
-	Hotkey("!F3", (*) => SendNotification("This is a `"cancel`" test notification", Map(
-		"Title", "JACS - Debug Notification",
-		"Type", "cancel",
-		"OnCancel", (*) => SendNotification("You clicked Cancel!", Map(
-			"Type", "info",
-			"Title", "JACS - Debug Notification",
-		)),
-	)))
-	Hotkey("!F4", (*) => SendNotification("This is a `"info`" test notification", Map(
-		"Title", "JACS - Debug Notification",
-		"Type", "info",
-	)))
-	Hotkey("!F5", (*) => SendNotification("This is a `"close`" test notification", Map(
-		"Title", "JACS - Debug Notification",
-		"Type", "close",
-		"OnClose", (*) => SendNotification("You clicked Close!", Map(
-			"Type", "info",
-			"Title", "JACS - Debug Notification",
-		)),
-	)))
-)
+	for key, function in hotkeys {
+		try Hotkey(key, hotkeys[key], "On")
+			catch Error as e
+				SendNotification("Error: " e.Message, Map(
+					"Type", "info",
+					"Title", "JACS - Debug Notification",
+				)) 
+	}
 }
-; 	Hotkey("!F1", (*) => SendNotification("This is a test notification", Map(
-; 		"Type", "yesno",
-; 		"OnYes", SendNotification.Bind("You clicked Yes!", Map(
-; 			"Type", "info",
-; 			"Title", "Debug Notification",
-; 			"OnYes", "",
-; 			"OnNo", "",
-; 			"Duration", 5000,
-; 		)),
-; 		"OnNo", SendNotification.Bind("You clicked No!", Map(
-; 			"Type", "info",
-; 			"Title", "Debug Notification",
-; 			"OnYes", "",
-; 			"OnNo", "",
-; 			"Duration", 5000,
-; 		)),
-; )))
+
+if doDebug
+	debugFuncs()
 
 debugNotif(msg := "1", title := "", options := "16", duration := 2) {
 	SendNotification(msg, Map(
@@ -3852,13 +3852,14 @@ ColorizeCredits(creditsLinkCtrl) {
     }
 }
 
-ArrayHasValue(arr, val) {
-	for each, v in arr {
-		if (v == val)
-			return true
+ArrayHasValue(arr, target) {
+	for pos, val in arr {
+		if (target == val)
+			return pos
 	}
 	return false
 }
+ArrayHasKey := (array, value) => ArrayHasValue(array, value)
 
 ; Evaluate expressions in concatenated strings
 Eval(expr) {
