@@ -72,7 +72,7 @@ icons := [
 global ICON_SPACING  := 20
 global ICON_WIDTH    := 40
 global BUTTON_HEIGHT := 40
-global HeaderHeight := 30
+global HeaderHeight := 28
 global tipHeight := 20
 global buttonHeight := 23
 global PixelOffset := 10
@@ -750,7 +750,7 @@ createMainButtons(*) {
 	global buttonFontSize, buttonFontWeight, buttonFont
 	local buttonHeight := 23
 
-	local Header := MainUI.Add("Text","x" ICON_WIDTH " y+" tipHeight+MainUI.MarginY " Section Center vMainHeader cff4840 h" HeaderHeight " w" UI_Width,"Jeebus' Auto-Clicker — V" version)
+	local Header := MainUI.Add("Text","x" ICON_WIDTH " y+" tipHeight+MainUI.MarginY " Section Center vMainHeader cff4840 h" math.clamp(HeaderHeight, 30, math.huge()) " w" UI_Width,"Jeebus' Auto-Clicker — V" version)
 
 	; ########################
 	; 		  Buttons
@@ -790,7 +790,7 @@ createMainButtons(*) {
 	; Credits
 	global CreditsLink := MainUI.Add("Link","c" linkColor . " Left h20 w" UI_Margin_Width, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
 	; Move credits link to bottom of UI_Height
-	CreditsLink.Move(ICON_WIDTH*2, UI_Height + (MainUI.MarginY - (tipHeight*1.5)))
+	CreditsLink.Move(ICON_WIDTH*2, UI_Height + (MainUI.MarginY - HeaderHeight - (tipHeight*1.5)))
 	LinkUseDefaultColor(CreditsLink)
 
 	CoreToggleButton.Opt("Background" intWindowColor)
@@ -2618,7 +2618,7 @@ ApplyThemeToGui(guiObj, themeMap) {
 					} else if InStr(ctrl.Name, "NotificationTitle") {
 						bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
 						fg := themeMap["HeaderColor"]
-					} else if InStr(ctrl.Name, "MainHeader") {
+					} else if InStr(ctrl.Name, "Header") {
 						bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
 						fg := themeMap["HeaderColor"]
 					} else {
@@ -2730,14 +2730,14 @@ ClickWindow(process) {
 	; Check active window
 	try activeTitle := WinGetTitle("A")
 	
-	ActivateWindow() {
+	ActivateWindow(target := process) {
 		try {
-			if not WinActive(process) and (MinutesToWait > 0 or SecondsToWait > 0)
-				WinActivate(process)
+			if not WinActive(target) and (MinutesToWait > 0 or SecondsToWait > 0)
+				WinActivate(target)
 		}
 	}
 
-	doClick(loopAmount := 1) {
+	doClick(targetID, loopAmount := 1) {
 		loop loopAmount {
 			local WindowX := 0, WindowY := 0, Width := 0, Height := 0
 			global KeyToSend
@@ -2751,7 +2751,7 @@ ClickWindow(process) {
 			local hoverCtrl := ""
 			local mouseX := 0, mouseY := 0
 
-			try cachedWindowID := WinGetID(process)  ; Only attempt if a window exists
+			try cachedWindowID := WinGetID(targetID)  ; Only attempt if a window exists
 			try WinGetPos(&WindowX, &WindowY, &Width, &Height, cachedWindowID)
 			try MouseGetPos(&mouseX, &mouseY, &hoverWindow, &hoverCtrl)
 
@@ -2764,10 +2764,12 @@ ClickWindow(process) {
 			OffsetY := Random(-MouseClickRadius, MouseClickRadius)
 
 			; Move mouse to the new randomized position within the area
-			if (hoverWindow and (hoverWindow != cachedWindowID)) and (MinutesToWait > 0 or SecondsToWait > 0)
+			if (hoverWindow and (hoverWindow != cachedWindowID)) and (MinutesToWait > 0 or SecondsToWait > 0) {
+				MouseMove(0,0,0)
 				MouseMove(CenterX + OffsetX, CenterY + OffsetY, (MouseSpeed == 0 and 0 or Random(0, MouseSpeed)))
+			}
 
-			if not hoverCtrl and (hoverWindow and cachedWindowID and hoverWindow == cachedWindowID)
+			if not hoverCtrl and (hoverWindow and cachedWindowID and hoverWindow == cachedWindowID) and 
 				Click(KeyToSend == "RButton" and "Right" or "Left")
 
 			if loopAmount > 1
@@ -2775,21 +2777,23 @@ ClickWindow(process) {
 		}
 	}
 
+	if SelectedProcessExe {
+		local allWindows := WinGetList("ahk_exe " SelectedProcessExe)
+		for ID in allWindows {
+			if (ID != process) and WinExist(ID) {
+				; Use the local variable instead of calling WinGetTitle("A") again
+				if (hoverWindow and (hoverWindow != ID and hoverWindow != WinGetID(ID))) and activeTitle
+					ActivateWindow(ID)
+				doClick(ID, MouseClicks or 5)
+			}
+		}
+	}
+	
 	; Use the local variable instead of calling WinGetTitle("A") again
 	if (hoverWindow and (hoverWindow != process and hoverWindow != WinGetID(process))) and activeTitle
 		ActivateWindow()
 
-	if SelectedProcessExe {
-		local allWindows := WinGetList("ahk_exe " SelectedProcessExe)
-		for ID in allWindows {
-			local hwnd := allWindows%A_Index%
-			if (hwnd != process) {
-				MouseMove(0, 0, 0)
-				doClick(MouseClicks or 5)
-			}
-		}
-	}
-	; doClick(MouseClicks or 5)
+	doClick(process, MouseClicks or 5)
 }
 
 isPixelColorInRadius(x, y, color, radius) {
@@ -2801,6 +2805,14 @@ isPixelColorInRadius(x, y, color, radius) {
 ; ############################### ;
 ; ########### Classes ########### ;
 ; ############################### ;
+
+tick() {
+    static EPOCH_OFFSET := 116444736000000000  ; 100ns intervals from 1601 to 1970
+    buf := Buffer(8, 0)                         ; allocate 8 bytes
+    DllCall("GetSystemTimeAsFileTime", "Ptr", buf.Ptr)
+    fileTime := NumGet(buf, 0, "Int64")         ; read 64-bit FILETIME
+    return math.round((fileTime - EPOCH_OFFSET) / 10000000) ; convert to seconds
+}
 
 class arr extends Array {
 	GetIndex(value) {
@@ -2820,13 +2832,16 @@ class arr extends Array {
 }
 
 class math {
-    static clamp(number, minimum, maximum) {
+	static huge(*) {
+		return 2^1024 - 1
+	}
+    static clamp(number, minimum := 0, maximum := math.huge()) {
         return Min(Max(number, minimum), maximum)
     }
-	static round(number, decimalPlaces) {
-			return Round(number, (decimalPlaces or 0))
+	static round(number, decimalPlaces := 0) {
+			return Round(number, decimalPlaces)
 	}
-	static random(min, max) {
+	static random(min, max := math.huge()) {
 		return Random(min, max)
 	}
 	static isInteger(value) {
@@ -2912,6 +2927,139 @@ class math {
 	}
 	static pow(base, exponent) {
 		return base ** exponent
+	}
+}
+
+class color3 {
+	static RGB(r, g, b) {
+		return (r << 16) | (g << 8) | b
+	}
+	static Hex(hex) {
+		return ((0xFF0000 & hex) >> 16, (0x00FF00 & hex) >> 8, (0x0000FF & hex))
+	}
+	static RGBToHex(r, g, b) {
+		return Format("#{1:02X}{2:02X}{3:02X}", r, g, b)
+	}
+	static HexToRGB(hex) {
+		hex := StrReplace(hex, "#")  ; Remove leading '#' if present
+		if (StrLen(hex) != 6)
+			throw Error("Invalid hex color string. Must be 6 characters.")
+
+		r := Integer("0x" SubStr(hex, 1, 2))
+		g := Integer("0x" SubStr(hex, 3, 2))
+		b := Integer("0x" SubStr(hex, 5, 2))
+		
+		return [r, g, b]
+	}
+	static RGBToHSV(r, g, b) {
+		local max := Max(r, g, b)
+		local min := Min(r, g, b)
+		local delta := max - min
+		local h := 0, s := 0, v := max
+		
+		if (delta != 0) {
+			s := delta / max
+			if (max == r) {
+				h := (g - b) / delta
+			} else if (max == g) {
+				h := 2 + (b - r) / delta
+			} else {
+				h := 4 + (r - g) / delta
+			}
+			h := Mod(h * 60, 360)
+		}
+		
+		return (h, s * 100, v * 100)
+	}
+	static HSVToRGB(h, s, v) {
+		local r, g, b
+		s := s / 100
+		v := v / 100
+		
+		local c := v * s
+		local x := c * (1 - Abs(Mod(h / 60, 2) - 1))
+		local m := v - c
+		
+		if (h < 60) {
+			r := c
+			g := x
+			b := 0
+		} else if (h < 120) {
+			r := x
+			g := c
+			b := 0
+		} else if (h < 180) {
+			r := 0
+			g := c
+			b := x
+		} else if (h < 240) {
+			r := 0
+			g := x
+			b := c
+		} else if (h < 300) {
+			r := x
+			g := 0
+			b := c
+		} else {
+			r := c
+			g := 0
+			b := x
+		}
+		
+		return (math.round((r + m) * 255), math.round((g + m) * 255), math.round((b + m) * 255))
+	}
+	static new(r, g, b) {
+		return color3.RGB(r * 255, g * 255, b * 255)
+	}
+}
+
+Print(val, indent := "") {
+	local output := ""
+	if (!IsObject(val))
+		return val . "`n"
+	
+	if (IsA(val, "array"))
+		output .= indent . "Array:" . "`n"
+	else if (IsA(val, "function"))
+		output .= indent . "Function:" . "`n"
+	else if (IsA(val, "gui"))
+		output .= indent . "GUI:" . "`n"
+	else if (IsA(val, "object"))
+		output .= indent . "Object:" . "`n"
+	else
+		output .= indent . "Unknown:" . "`n"
+	
+	for key, item in val {
+		if (IsObject(item))
+			output .= indent . "  " . key . ":`n" . Print(item, indent . "	")
+		else
+			output .= indent . "  " . key . ": " . item . "`n"
+	}
+	return output
+}
+
+IsA(val, typeName) {
+	switch StrLower(typeName) {
+		case "array":
+			return val is Array
+		case "function":
+			return val is Func
+		case "gui":
+			return val is Gui
+		case "object":
+			return val is Object
+		case "map":
+			return val is Map
+		case "buffer":
+			return val is Buffer
+		case "string":
+			return val is String
+		case "number":
+			return val is Number
+		case "integer":
+			return val is Integer
+		case "float":
+			return val is Float
 	}
 }
 
@@ -3488,7 +3636,7 @@ SendNotification(message, config := Map(
 	local shellY := screenH / 2
 	local slotYOffsets := [shellY + screenH * 0.25, shellY, shellY - screenH * 0.25]
 	shellY := slotYOffsets[slotIndex]
-
+	
 	NotiShellGui := Gui("+AlwaysOnTop -Caption +ToolWindow +LastFound")
 	NotiShellGui.BackColor := getActiveStatusColor()
 	NotiInnerGui := Gui("+Parent" NotiShellGui.Hwnd " -Caption +ToolWindow +LastFound +E0x20")
@@ -3504,17 +3652,50 @@ SendNotification(message, config := Map(
 	NotiInnerGui.OnEvent("Escape", closeNotification)
 	NotiShellGui.OnEvent("Escape", closeNotification)
 
-	innerW := popupWidth - popupMarginX * 2
-	titleLabel := NotiInnerGui.Add("Text", "Center w" innerW " h" HeaderHeight, title)
+	innerW := popupWidth - (popupMarginX * 2)
+	titleLabel := NotiInnerGui.Add("Text", "vHeader" getUniqueID() " Center w" innerW - (popupMarginX * 2) " h" HeaderHeight, title)
 	titleLabel.SetFont("s16 c" ControlTextColor " w" buttonFontWeight, "Ink Free")
 
-	messageBox := NotiInnerGui.Add("Text", "Center xm w" innerW - popupMarginX, message)
+	messageBox := NotiInnerGui.Add("Text", "vMessageBox Center xm w" innerW - (popupMarginX * 2), message)
 	messageBox.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+	
+	local totalButtons := type = "yesno" ? 2 : 1
 	size := getControlSize(messageBox)
+	local totalObjectsHeight := size.H + (buttonHeight*totalButtons) + HeaderHeight + (NotiShellGui.MarginY*2)
+	local FinalHeight := popupHeight + (totalObjectsHeight - popupHeight) + popupMarginY * 2
 
-	popupHeight := size.H * 2.5 + buttonHeight + HeaderHeight + popupMarginY * 2
-	NotiShellGui.Show("NoActivate x" shellX " y" shellY " w" popupWidth " h" popupHeight)
-	NotiInnerGui.Show("NoActivate w" innerW " h" popupHeight)
+	; Add buttons
+	btnY := FinalHeight - buttonHeight - popupMarginY
+	
+	singleW := innerW / 2.5
+	singleX := (innerW - singleW) / 2
+	doubleW := innerW / 3
+	doubleX1 := (innerW - doubleW * 2 - popupMarginX/2) / 2
+	doubleX2 := doubleX1 + doubleW + popupMarginX/2
+
+	if (type = "yesno") {
+		btnYes := NotiInnerGui.Add("Button","vInvisBG_Yes" getUniqueID() Format(" x{} y{} w{} h{}", doubleX1, btnY, doubleW, buttonHeight), "Yes")
+		btnNo  := NotiInnerGui.Add("Button","vInvisBG_No" getUniqueID() Format(" x{} y{} w{} h{}", doubleX2, btnY, doubleW, buttonHeight), "No")
+		btnYes.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+		btnNo.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+		btnYes.Opt("BackgroundTrans")
+		btnNo.Opt("BackgroundTrans")
+
+		btnYes.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onYes) ? onYes.Call() : ""))
+		btnNo.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onNo) ? onNo.Call() : ""))
+	} else if (type = "ok") {
+		btnOk := NotiInnerGui.Add("Button", "vInvisBG_Ok" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "OK")
+		btnOk.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onOk) ? onOk.Call() : ""))
+	} else if (type = "cancel") {
+		btnCancel := NotiInnerGui.Add("Button", "vInvisBG_Cancel" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Cancel")
+		btnCancel.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onCancel) ? onCancel.Call() : ""))
+	} else {
+		btnClose := NotiInnerGui.Add("Button", "vInvisBG_Close" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Close")
+		btnClose.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onClose) ? onClose.Call() : ""))
+	}
+
+	NotiShellGui.Show("NoActivate x" shellX " y" shellY " w" popupWidth " h" FinalHeight)
+	NotiInnerGui.Show("NoActivate w" innerW " h" FinalHeight)
 
 	SetRoundedCorners(id, 16)
 	SetRoundedCorners(NotiInnerGui.Hwnd, 16)
@@ -3524,35 +3705,6 @@ SendNotification(message, config := Map(
 
 	themeFunctions[id] := SetTimer(() => NotiShellGui.BackColor := getActiveStatusColor(), 500, id)
 	closeFunctions[id] := SetTimer(() => closeNotification(id), -duration, id)
-
-	; Add buttons
-	btnY := popupHeight - buttonHeight - popupMarginY
-	singleW := innerW / 2.5
-	singleX := (innerW - singleW) / 2
-	doubleW := innerW / 3
-	doubleX1 := (innerW - doubleW * 2 - popupMarginX / 2) / 2
-	doubleX2 := doubleX1 + doubleW + popupMarginX / 2
-
-	if (type = "yesno") {
-		btnYes := NotiInnerGui.Add("Button","vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", doubleX1, btnY, doubleW, buttonHeight), "Yes")
-		btnNo  := NotiInnerGui.Add("Button","vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", doubleX2, btnY, doubleW, buttonHeight), "No")
-		btnYes.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-		btnNo.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-		btnYes.Opt("BackgroundTrans")
-		btnNo.Opt("BackgroundTrans")
-
-		btnYes.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onYes) ? onYes.Call() : ""))
-		btnNo.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onNo) ? onNo.Call() : ""))
-	} else if (type = "ok") {
-		btnOk := NotiInnerGui.Add("Button", "vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "OK")
-		btnOk.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onOk) ? onOk.Call() : ""))
-	} else if (type = "cancel") {
-		btnCancel := NotiInnerGui.Add("Button", "vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Cancel")
-		btnCancel.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onCancel) ? onCancel.Call() : ""))
-	} else {
-		btnClose := NotiInnerGui.Add("Button", "vInvisBG_" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Close")
-		btnClose.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onClose) ? onClose.Call() : ""))
-	}
 
 	; Close & dequeue logic 
 	closeNotification(hwnd := id) {
@@ -3737,6 +3889,8 @@ debugFuncs(*) {
 				"Title", "JACS - Debug Notification",
 			)),
 		)),
+		"!F6", (*) => SendNotification(Print(color3.HexToRGB("191919"))),
+		"!F7", (*) => SendNotification(Print(tick())),
 	)
 
 	for key, function in hotkeys {
@@ -3744,8 +3898,8 @@ debugFuncs(*) {
 			catch Error as e
 				SendNotification("Error: " e.Message, Map(
 					"Type", "info",
-					"Title", "JACS - Debug Notification",
-				)) 
+					"Title", "JACS - Debug Keys Error",
+				))
 	}
 }
 
