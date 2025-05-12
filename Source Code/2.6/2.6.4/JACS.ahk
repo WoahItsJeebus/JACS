@@ -12,6 +12,12 @@ DetectHiddenWindows(true)
 A_HotkeyInterval := 0
 A_MaxHotkeysPerInterval := 1000
 
+global GeneralData := Map(
+	"author", "WoahItsJeebus",
+	"repo", "JACS",
+	"versionData", Map()
+)
+
 global A_LocalAppData := EnvGet("LOCALAPPDATA")
 global localScriptDir := A_LocalAppData "\JACS\"
 global Utilities := localScriptDir "Utilities"
@@ -127,7 +133,9 @@ global MainUI_Disabled := false
 global UI_Width := "400"
 global UI_Height := "300"
 
+; Caches
 global tips := []  ; Will be populated from tips.ahk or defaults if it fails
+global ProcessWindowCache := Map()
 
 ; Core UI
 global MainUI_BG := ""
@@ -200,6 +208,7 @@ global Credits_ColorChangeRate := 5 ; (higher = faster)
 ; Keys
 global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 
+toggleAutoUpdate(true)
 OnExit(EndScriptProcess)
 OnMessage(0x0112, WM_SYSCOMMAND_Handler)
 DeleteTrayTabs()
@@ -228,14 +237,19 @@ MenuHandler(ItemName, ItemPos, MyMenu) {
 }
 
 IsVersionNewer(localVersion, onlineVersion) {
+	if !localVersion || !onlineVersion
+		return "Failed"
+
 	localParts := StrSplit(localVersion, ".")
 	onlineParts := StrSplit(onlineVersion, ".")
 	
 	; Compare each version segment numerically
 	Loop localParts.Length {
 		localPart := localParts[A_Index]
-		onlinePart := onlineParts[A_Index]
-		
+		onlinePart := onlineParts && onlineParts.Has(A_Index) ? onlineParts[A_Index] : unset
+		if !onlinePart or !IsSet(onlinePart)
+			return "Failed"
+
 		; Treat missing parts as 0 (e.g., "1.2" vs "1.2.1")
 		localPart := localPart != "" ? localPart : 0
 		onlinePart := onlinePart != "" ? onlinePart : 0
@@ -243,7 +257,7 @@ IsVersionNewer(localVersion, onlineVersion) {
 		if (onlinePart > localPart)
 			return "Outdated"
 		else if (onlinePart < localPart)
-			return "Other"
+			return "Beta"
 	}
 	return "Updated" ; Versions are equal
 }
@@ -292,8 +306,8 @@ GetUpdate(*) {
 	
 	global localScriptDir
 	local localScriptPath := localScriptDir "JACS.ahk"
-
-    if IsVersionNewer(version, latestVersion) == "Outdated" {
+	local getStatus := IsVersionNewer(version, latestVersion)
+    if getStatus == "Outdated" {
         if !autoUpdateDontAsk {
             SendNotification("Get the latest version from GitHub?", Map(
 				"Type", "yesno",
@@ -309,10 +323,27 @@ GetUpdate(*) {
 				"Title", "JACS - Update Available!",
 			))
         }
-    }
-	else if IsVersionNewer(version, latestVersion) == "Updated" {
+    } else if getStatus == "Updated" {
 		autoUpdateDontAsk := false
 		SetTimer(AutoUpdate, 0)
+	} else if getStatus == "Beta" {
+		autoUpdateDontAsk := true
+		SendNotification("Using JACS beta version " version ". Continuing with onboard script", Map(
+			"Duration", 5000,
+			"Title", "JACS - Update Status",
+		))
+	} else if getStatus == "Failed" {
+		autoUpdateDontAsk := true
+		SendNotification("JACS update check failed. Continuing with onboard script", Map(
+			"Duration", 5000,
+			"Title", "JACS - Update Status",
+		))
+	} else {
+		autoUpdateDontAsk := true
+		SendNotification("JACS update check returned `"Other`"", Map(
+			"Duration", 5000,
+			"Title", "JACS - Update Status",
+		))
 	}
 }
 
@@ -580,6 +611,8 @@ runNecessaryTimers(*) {
 				Sleep(100)
 			SetTimer(Data["Function"], Data["Interval"])
 		}
+
+	StartProcessWindowWatcher()
 }
 
 addTipBox(*) {
@@ -2324,7 +2357,6 @@ ToggleSound(*) {
 ; ################################ ;
 ; ####### Window Functions ####### ;
 ; ################################ ;
-
 FindTargetHWND(*) {
 	global SelectedProcessExe
 	local foundWindow := WinExist("ahk_exe " SelectedProcessExe) and WinExist("ahk_exe " SelectedProcessExe) or ""
@@ -2335,35 +2367,36 @@ FindTargetHWND(*) {
 	return foundWindow
 }
 
-isMouseClickingOnTargetWindow(key?, override*) {
-	global initializing
-	if initializing
+StartProcessWindowWatcher(exeName := SelectedProcessExe, interval := 5000) {
+	global ProcessWindowCache
+
+	if !exeName
 		return
 
-	local process := FindTargetHWND()
-	if not process
-		return
-	
-	checkWindow(*) {
-		if GetKeyState(key) == 0
-			return SetTimer(checkWindow, 0, 1)
-		
-		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
-		
-		if hoverWindow == process
-			return ResetCooldown()
+	static watcherTimers := Map()
+
+	if watcherTimers.Has(exeName)
+		return ; Already watching
+
+	updateList() {
+		try {
+			ProcessWindowCache[exeName] := WinExist("ahk_exe " exeName) and WinGetList("ahk_exe " exeName) or []
+		}
+		catch {
+			ProcessWindowCache[exeName] := []
+		}
 	}
-	
-	if override[1]
-		return checkWindow()
-	
-	SetTimer(checkWindow, 100, 1)
+
+	updateList() ; Initial call
+	SetTimer(updateList, interval)
+	watcherTimers[exeName] := true
 }
 
 ClickWindow(process) {
 	global SelectedProcessExe, wasActiveWindow := false
 	global MouseSpeed, MouseClickRateOffset, MouseClickRadius, MouseClicks
 	global KeyToSend, MinutesToWait, SecondsToWait
+	global ProcessWindowCache
 
 	try wasActiveWindow := WinActive(process) or false
 	MouseGetPos(&mouseX, &mouseY, &hoverWindow)
@@ -2371,18 +2404,20 @@ ClickWindow(process) {
 	try activeTitle := WinGetTitle("A")
 
 	local processName := WinGetProcessName(process)
-	local allWindows := WinGetList("ahk_exe " (processName ? processName : SelectedProcessExe ? SelectedProcessExe : process))
+	local allWindows := ProcessWindowCache.Has(processName) ? ProcessWindowCache[processName] : ""
 
 	ActivateWindow(target := process) {
 		try {
 			if (MinutesToWait <= 0 || SecondsToWait <= 0)
 				return
-			if !WinActive(target) && WinGetMinMax(target) != -1
-				WinActivate(target)
-			else if WinGetMinMax(target) == -1 {
+			if WinGetMinMax(target) == -1 {
 				WinRestore(target)
 				Sleep(100)
+			}
+
+			if !WinActive(target) && WinGetMinMax(target) != -1 {
 				WinActivate(target)
+				; WinWaitActive(target,,250)
 			}
 		}
 	}
@@ -2393,7 +2428,7 @@ ClickWindow(process) {
 			local CenterX := 0, CenterY := 0, OffsetX := 0, OffsetY := 0
 			local cachedWindowID := "", hoverCtrl := ""
 
-			try cachedWindowID := WinGetID(targetID)
+			cachedWindowID := targetID
 			if !cachedWindowID
 				return
 
@@ -2423,26 +2458,46 @@ ClickWindow(process) {
 		}
 	}
 
-	if !allWindows
-		SendNotification("No windows found for " SelectedProcessExe)
-	
-		
 	; Loop through all windows of selected exe
-	for ID in allWindows {
-		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
-		if ID != process && WinExist(ID) {
-			if hoverWindow && hoverWindow != ID && hoverWindow != WinGetID(ID) && activeTitle {
-				ActivateWindow(ID)
-				doClick(ID, MouseClicks || 5)
+	if allWindows != "" and IsA(allWindows, "array")
+		for ID in allWindows {
+			MouseGetPos(&mouseX, &mouseY, &hoverWindow)
+			if ID != process && ID {
+				if hoverWindow && hoverWindow != ID && hoverWindow != ID && activeTitle
+					doClick(ID, MouseClicks || 5)
 			}
 		}
-	}
 
 	; Ensure main window also gets clicked
 	; if hoverWindow && hoverWindow != process && hoverWindow != WinGetID(process) && activeTitle
 	; 	ActivateWindow()
 
 	doClick(process, MouseClicks || 5)
+}
+
+isMouseClickingOnTargetWindow(key?, override*) {
+	global initializing
+	if initializing
+		return
+
+	local process := FindTargetHWND()
+	if not process
+		return
+	
+	checkWindow(*) {
+		if GetKeyState(key) == 0
+			return SetTimer(checkWindow, 0, 1)
+		
+		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
+		
+		if hoverWindow == process
+			return ResetCooldown()
+	}
+	
+	if override[1]
+		return checkWindow()
+	
+	SetTimer(checkWindow, 100, 1)
 }
 
 MonitorGetNumberFromPoint(x, y) {
@@ -3276,7 +3331,6 @@ toggleAutoUpdate(doUpdate := false) {
 	GetUpdate()
 	return SetTimer(AutoUpdate, 60000)
 }
-toggleAutoUpdate(true)
 
 DeleteTrayTabs(*) {
 	TabNames := [
@@ -4072,6 +4126,101 @@ ParseLetterFormat(input) {
 ; ########## Patchnotes ########### ;
 ; ################################# ;
 
+global versionTags := GetGitHubReleaseTags(GeneralData["author"], GeneralData["repo"])
+
+ShowPatchNotesGUI(release := "latest") {
+    global GeneralData
+	if !GeneralData["versionData"].Has(release) {
+		local initialLatestData := GetGitHubReleaseInfo(GeneralData["author"], GeneralData["repo"], release)
+		GeneralData["versionData"][release] := Map("Patchnotes", "")
+		GeneralData["versionData"][release]["Patchnotes"] := GetGitHubReleaseInfo(GeneralData["author"], GeneralData["repo"], release)["body"]
+	}
+
+	; 	"author", "WoahItsJeebus",
+	; 	"repo", "JACS",
+	; 	"versionData", Map()
+	
+	global AlwaysOnTopActive
+	global MainUI_PosX
+	global MainUI_PosY
+	global PatchUI
+	global ExtrasUI
+
+	local Popout_Width := "700"
+	local Popout_Height := "400"
+	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
+	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
+	githubResponse := GeneralData["versionData"][release]["Patchnotes"] ? Map("title", release, "body", GeneralData["versionData"][release]["Patchnotes"]) : GetGitHubReleaseInfo(GeneralData["author"], GeneralData["repo"], release)
+	patchNotes := githubResponse
+	
+    ; Create GUI Window
+	if PatchUI
+		PatchUI.Destroy()
+
+	PatchUI := Gui(AOTStatus)
+	if ExtrasUI
+		PatchUI.Opt("+Owner" . ExtrasUI.Hwnd)
+
+	PatchUI.BackColor := intWindowColor
+	PatchUI.Title := "Patchnotes"
+	
+	local PatchnotesLabel := PatchUI.Add("Text", "Section Center vPatchnotesLabel h40 w" (Popout_Width-PatchUI.MarginX), "Patchnotes: " patchNotes["title"])
+	PatchnotesLabel.SetFont("s20 w600", "Consolas")
+	PatchnotesLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+	PatchNotesLabel.GetPos(,,&LabelWidth,&LabelHeight)
+
+	local VersionList := PatchUI.Add("DropDownList", "xm Section Center vVersionList R10 h60 w" (Popout_Width-PatchUI.MarginX)/2.5, ["latest"])
+	VersionList.SetFont("s12", "Consolas")
+	VersionList.Opt("Background" intWindowColor . " c" ControlTextColor)
+	VersionList.Value := 1
+	VersionList.Move((Popout_Width/3) - PatchUI.MarginX)
+	VersionList.GetPos(,,&LabelWidth,&ListHeight)
+	VersionList.OnEvent("Change", SelectNewOption)
+	local addedHeight := LabelHeight + ListHeight
+
+	SelectNewOption(*) {
+		githubResponse := GeneralData["versionData"].Has([VersionList.Text]) ? Map("title", VersionList.Text, "body", GeneralData["versionData"][VersionList.Text]["Patchnotes"]) : GetGitHubReleaseInfo(GeneralData["author"], GeneralData["repo"], VersionList.Text)
+		if !GeneralData["versionData"].Has(VersionList.Text) {
+			GeneralData["versionData"][VersionList.Text] := Map("Patchnotes", "")
+			GeneralData["versionData"][VersionList.Text]["Patchnotes"] := githubResponse["body"]
+		}
+
+		patchNotes := githubResponse
+		
+		if BodyBox {
+			BodyBox.Text := patchNotes["body"]
+			PatchnotesLabel.Text := "Patchnotes: " (StrLower(VersionList.Text) == "latest" ? patchNotes["title"] . " (Latest)" : patchNotes["title"])
+		}
+	}
+
+	if versionTags.Length > 0
+		for index, tag in versionTags {
+			VersionList.Add([tag])
+			; option.SetFont("s10 w300", "Consolas")
+			; option.Opt("Background" intWindowColor . " c" ControlTextColor)
+		}
+
+	PatchUI.Show("Hide")
+
+	local BodyBox := PatchUI.Add("Edit", "xs y+20 vPatchnotes VScroll Section ReadOnly h" (Popout_Height-PatchUI.MarginY) - addedHeight " w" Popout_Width-PatchUI.MarginX, patchNotes["body"])
+	BodyBox.SetFont("s14 w600", "Consolas")
+	BodyBox.Opt("Background555555" . " c" ControlTextColor)
+	
+	PatchUI.Show("Hide AutoSize")
+	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
+	WinGetPos(,,&patchUI_width,&patchUI_height, PatchUI.Title)
+
+	SelectNewOption()
+	
+	PatchUI.Show("AutoSize")
+
+
+
+	CenterX := MainX + (MainW / 2) - (patchUI_width / 2)
+	CenterY := MainY + (MainH / 2) - (patchUI_height / 2)
+	PatchUI.Show("X" CenterX " Y" CenterY)
+}
+
 GetGitHubReleaseInfo(owner, repo, release := "latest") {
     static MAX_ATTEMPTS := 10
     static BASE_DELAY_MS := 1000  ; Start with 1 second delay
@@ -4135,95 +4284,6 @@ GetGitHubReleaseTags(owner, repo) {
         pos := m.Pos + m.Len
     }
     return tags
-}
-
-ShowPatchNotesGUI(release := "latest") {
-    owner := "WoahItsJeebus"
-    repo := "JACS"
-    versionTags := GetGitHubReleaseTags(owner, repo)
-
-	global AlwaysOnTopActive
-	global MainUI_PosX
-	global MainUI_PosY
-	global PatchUI
-	global ExtrasUI
-
-	local Popout_Width := "700"
-	local Popout_Height := "400"
-	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
-	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
-	githubResponse := GetGitHubReleaseInfo("WoahItsJeebus", repo, "latest")
-	patchNotes := githubResponse
-	try if patchNotes["title"] and patchNotes["body"]
-		patchNotes := Map(
-			"title", "Error",
-			"body", "Error"
-		)
-	catch Error as e
-		patchNotes := Map(
-			"title", "Error",
-			"body", "Error"
-		)
-
-    ; Create GUI Window
-	if PatchUI
-		PatchUI.Destroy()
-
-	PatchUI := Gui(AOTStatus)
-	if ExtrasUI
-		PatchUI.Opt("+Owner" . ExtrasUI.Hwnd)
-
-	PatchUI.BackColor := intWindowColor
-	PatchUI.Title := "Patchnotes"
-	
-	local PatchnotesLabel := PatchUI.Add("Text", "Section Center vPatchnotesLabel h40 w" (Popout_Width-PatchUI.MarginX), "Patchnotes: " patchNotes["title"])
-	PatchnotesLabel.SetFont("s20 w600", "Consolas")
-	PatchnotesLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-	PatchNotesLabel.GetPos(,,&LabelWidth,&LabelHeight)
-
-	local VersionList := PatchUI.Add("DropDownList", "xm Section Center vVersionList R10 h60 w" (Popout_Width-PatchUI.MarginX)/2.5, ["latest"])
-	VersionList.SetFont("s12", "Consolas")
-	VersionList.Opt("Background" intWindowColor . " c" ControlTextColor)
-	VersionList.Value := 1
-	VersionList.Move((Popout_Width/3) - PatchUI.MarginX)
-	VersionList.GetPos(,,&LabelWidth,&ListHeight)
-	VersionList.OnEvent("Change", SelectNewOption)
-	local addedHeight := LabelHeight + ListHeight
-
-	SelectNewOption(*) {
-		githubResponse := GetGitHubReleaseInfo("WoahItsJeebus", repo, VersionList.Text)
-		patchNotes := githubResponse
-		
-		if BodyBox {
-			BodyBox.Text := patchNotes["body"]
-			PatchnotesLabel.Text := "Patchnotes: " patchNotes["title"]
-		}
-	}
-
-	if versionTags.Length > 0
-		for index, tag in versionTags {
-			VersionList.Add([tag])
-			; option.SetFont("s10 w300", "Consolas")
-			; option.Opt("Background" intWindowColor . " c" ControlTextColor)
-		}
-
-	PatchUI.Show("Hide")
-
-	local BodyBox := PatchUI.Add("Edit", "xs y+20 vPatchnotes VScroll Section ReadOnly h" (Popout_Height-PatchUI.MarginY) - addedHeight " w" Popout_Width-PatchUI.MarginX, patchNotes["body"])
-	BodyBox.SetFont("s14 w600", "Consolas")
-	BodyBox.Opt("Background555555" . " c" ControlTextColor)
-	
-	SelectNewOption()
-
-	; Calculate center position
-	PatchUI.Show("AutoSize")
-
-	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
-	WinGetPos(,,&patchUI_width,&patchUI_height, PatchUI.Title)
-
-	CenterX := MainX + (MainW / 2) - (patchUI_width / 2)
-	CenterY := MainY + (MainH / 2) - (patchUI_height / 2)
-	PatchUI.Show("X" CenterX " Y" CenterY)
 }
 
 JSON_parse(str) {
