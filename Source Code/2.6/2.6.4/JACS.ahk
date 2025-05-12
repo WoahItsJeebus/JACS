@@ -1809,38 +1809,6 @@ CreateExtrasGUI(*) {
 	}
 }
 
-evenlySpaceControls(guiObject) {
-	global buttonHeight
-	global PixelOffset
-
-	local buttonCount := 0
-	local remainingHeight := 0
-	WinGetPos(&MainX, &MainY, &MainW, &MainH, guiObject.hwnd)
-
-	for i, control in guiObject {
-		if control.Name != "Section" {
-			buttonCount++
-			local height := getControlSize(control)
-			local totalHeight := buttonHeight * buttonCount + (guiObject.MarginY * (buttonCount - 1)) + PixelOffset * 2
-			local remainingHeight := (MainW - guiObject.MarginX) - totalHeight + (guiObject.MarginY * 2)
-
-			control.Y := (remainingHeight / 2) + (buttonHeight * (i - 1)) + guiObject.MarginY * i + PixelOffset
-		}
-	}
-
-	return remainingHeight
-}
-
-GuiGetClientHeight(guiObj) {
-	; Gets only the height of the usable area inside the GUI
-	local x, y, w, h := 0
-	if !guiObj
-		return 0
-	
-	try guiObj.GetClientPos(&x, &y, &w, &h)
-	return h
-}
-
 ToggleHideUI(newstate) {
 	global MainUI
 	global isUIHidden
@@ -2219,16 +2187,6 @@ ReloadScript(*) {
 	Reload
 }
 
-FindTargetHWND(*) {
-	global SelectedProcessExe
-	local foundWindow := WinExist("ahk_exe " SelectedProcessExe) and WinExist("ahk_exe " SelectedProcessExe) or ""
-	
-	if !foundWindow
-		return false
-	
-	return foundWindow
-}
-
 RunCore(*) {
 	global FirstRun
 	global MainUI
@@ -2328,7 +2286,7 @@ RunCore(*) {
 }
 
 ; ################################ ;
-; ############ Sounds ############ ;
+; ####### Sound Functions ######## ;
 ; ################################ ;
 
 RunWarningSound(*) {
@@ -2366,6 +2324,127 @@ ToggleSound(*) {
 ; ################################ ;
 ; ####### Window Functions ####### ;
 ; ################################ ;
+
+FindTargetHWND(*) {
+	global SelectedProcessExe
+	local foundWindow := WinExist("ahk_exe " SelectedProcessExe) and WinExist("ahk_exe " SelectedProcessExe) or ""
+	
+	if !foundWindow
+		return false
+	
+	return foundWindow
+}
+
+isMouseClickingOnTargetWindow(key?, override*) {
+	global initializing
+	if initializing
+		return
+
+	local process := FindTargetHWND()
+	if not process
+		return
+	
+	checkWindow(*) {
+		if GetKeyState(key) == 0
+			return SetTimer(checkWindow, 0, 1)
+		
+		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
+		
+		if hoverWindow == process
+			return ResetCooldown()
+	}
+	
+	if override[1]
+		return checkWindow()
+	
+	SetTimer(checkWindow, 100, 1)
+}
+
+ClickWindow(process) {
+	global SelectedProcessExe, wasActiveWindow := false
+	global MouseSpeed, MouseClickRateOffset, MouseClickRadius, MouseClicks
+	global KeyToSend, MinutesToWait, SecondsToWait
+
+	try wasActiveWindow := WinActive(process) or false
+	MouseGetPos(&mouseX, &mouseY, &hoverWindow)
+	local activeTitle := ""
+	try activeTitle := WinGetTitle("A")
+
+	local processName := WinGetProcessName(process)
+	local allWindows := WinGetList("ahk_exe " (processName ? processName : SelectedProcessExe ? SelectedProcessExe : process))
+
+	ActivateWindow(target := process) {
+		try {
+			if (MinutesToWait <= 0 || SecondsToWait <= 0)
+				return
+			if !WinActive(target) && WinGetMinMax(target) != -1
+				WinActivate(target)
+			else if WinGetMinMax(target) == -1 {
+				WinRestore(target)
+				Sleep(100)
+				WinActivate(target)
+			}
+		}
+	}
+
+	doClick(targetID, loopAmount := 1) {
+		loop loopAmount {
+			local WindowX := 0, WindowY := 0, Width := 0, Height := 0
+			local CenterX := 0, CenterY := 0, OffsetX := 0, OffsetY := 0
+			local cachedWindowID := "", hoverCtrl := ""
+
+			try cachedWindowID := WinGetID(targetID)
+			if !cachedWindowID
+				return
+
+			ActivateWindow(cachedWindowID)
+
+			try WinGetPos(&WindowX, &WindowY, &Width, &Height, cachedWindowID)
+			if (Width <= 0 || Height <= 0)
+				return
+
+			CenterX := WindowX + (Width / 2)
+			CenterY := WindowY + (Height / 2)
+			OffsetX := Random(-MouseClickRadius, MouseClickRadius)
+			OffsetY := Random(-MouseClickRadius, MouseClickRadius)
+
+			MouseGetPos(&mouseX, &mouseY, &hoverWindow, &hoverCtrl)
+
+			if (hoverWindow && hoverWindow != cachedWindowID && (MinutesToWait > 0 || SecondsToWait > 0)) {
+				MouseMove(CenterX + OffsetX, CenterY + OffsetY, MouseSpeed ? Random(0, MouseSpeed) : 0)
+			}
+
+			if !hoverCtrl && hoverWindow && cachedWindowID && hoverWindow == cachedWindowID {
+				Click(KeyToSend == "RButton" ? "Right" : "Left")
+			}
+
+			if loopAmount > 1
+				Sleep(Random(10, MouseClickRateOffset || 10))
+		}
+	}
+
+	if !allWindows
+		SendNotification("No windows found for " SelectedProcessExe)
+	
+		
+	; Loop through all windows of selected exe
+	for ID in allWindows {
+		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
+		if ID != process && WinExist(ID) {
+			if hoverWindow && hoverWindow != ID && hoverWindow != WinGetID(ID) && activeTitle {
+				ActivateWindow(ID)
+				doClick(ID, MouseClicks || 5)
+			}
+		}
+	}
+
+	; Ensure main window also gets clicked
+	; if hoverWindow && hoverWindow != process && hoverWindow != WinGetID(process) && activeTitle
+	; 	ActivateWindow()
+
+	doClick(process, MouseClicks || 5)
+}
+
 MonitorGetNumberFromPoint(x, y) {
     ; MONITOR_DEFAULTTONEAREST = 2
     hMonitor := DllCall("User32\MonitorFromPoint", "int64", (y << 32) | (x & 0xFFFFFFFF), "uint", 2, "ptr")
@@ -2418,6 +2497,38 @@ IsWindowVisibleToUser(hWnd) {
 
 	; Check visibility
 	return DllCall("IsWindowVisible", "ptr", hWnd, "int")
+}
+
+evenlySpaceControls(guiObject) {
+	global buttonHeight
+	global PixelOffset
+
+	local buttonCount := 0
+	local remainingHeight := 0
+	WinGetPos(&MainX, &MainY, &MainW, &MainH, guiObject.hwnd)
+
+	for i, control in guiObject {
+		if control.Name != "Section" {
+			buttonCount++
+			local height := getControlSize(control)
+			local totalHeight := buttonHeight * buttonCount + (guiObject.MarginY * (buttonCount - 1)) + PixelOffset * 2
+			local remainingHeight := (MainW - guiObject.MarginX) - totalHeight + (guiObject.MarginY * 2)
+
+			control.Y := (remainingHeight / 2) + (buttonHeight * (i - 1)) + guiObject.MarginY * i + PixelOffset
+		}
+	}
+
+	return remainingHeight
+}
+
+GuiGetClientHeight(guiObj) {
+	; Gets only the height of the usable area inside the GUI
+	local x, y, w, h := 0
+	if !guiObj
+		return 0
+	
+	try guiObj.GetClientPos(&x, &y, &w, &h)
+	return h
 }
 
 ; ################################ ;
@@ -2689,113 +2800,6 @@ WinSetRedraw(hWnd) {
     DllCall("RedrawWindow", "ptr", hWnd, "ptr", 0, "ptr", 0, "uint", 0x85)
 }
 
-isMouseClickingOnTargetWindow(key?, override*) {
-	global initializing
-	if initializing
-		return
-
-	local process := FindTargetHWND()
-	if not process
-		return
-	
-	checkWindow(*) {
-		if GetKeyState(key) == 0
-			return SetTimer(checkWindow, 0, 1)
-		
-		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
-		
-		if hoverWindow == process
-			return ResetCooldown()
-	}
-	
-	if override[1]
-		return checkWindow()
-	
-	SetTimer(checkWindow, 100, 1)
-}
-
-ClickWindow(process) {
-	global SelectedProcessExe
-	global wasActiveWindow := false
-	global MouseSpeed
-	global MouseClickRateOffset
-	global MouseClickRadius
-	global MouseClicks
-
-	try wasActiveWindow := WinActive(process) or false
-
-	MouseGetPos(&mouseX, &mouseY, &hoverWindow)
-	local activeTitle := ""
-
-	; Check active window
-	try activeTitle := WinGetTitle("A")
-	
-	ActivateWindow(target := process) {
-		try {
-			if not WinActive(target) and (MinutesToWait > 0 or SecondsToWait > 0)
-				WinActivate(target)
-		}
-	}
-
-	doClick(targetID, loopAmount := 1) {
-		loop loopAmount {
-			local WindowX := 0, WindowY := 0, Width := 0, Height := 0
-			global KeyToSend
-			
-			if activeTitle and !WinExist(activeTitle)
-				break
-			
-			local cachedWindowID := ""
-			local cachedWindowPos := ""
-			local hoverWindow := ""
-			local hoverCtrl := ""
-			local mouseX := 0, mouseY := 0
-
-			try cachedWindowID := WinGetID(targetID)  ; Only attempt if a window exists
-			try WinGetPos(&WindowX, &WindowY, &Width, &Height, cachedWindowID)
-			try MouseGetPos(&mouseX, &mouseY, &hoverWindow, &hoverCtrl)
-
-			; Determine exact center of the active window
-			CenterX := WindowX + (Width / 2)
-			CenterY := WindowY + (Height / 2)
-
-			; Generate randomized offset
-			OffsetX := Random(-MouseClickRadius, MouseClickRadius)
-			OffsetY := Random(-MouseClickRadius, MouseClickRadius)
-
-			; Move mouse to the new randomized position within the area
-			if (hoverWindow and (hoverWindow != cachedWindowID)) and (MinutesToWait > 0 or SecondsToWait > 0) {
-				MouseMove(0,0,0)
-				MouseMove(CenterX + OffsetX, CenterY + OffsetY, (MouseSpeed == 0 and 0 or Random(0, MouseSpeed)))
-			}
-
-			if not hoverCtrl and (hoverWindow and cachedWindowID and hoverWindow == cachedWindowID) and 
-				Click(KeyToSend == "RButton" and "Right" or "Left")
-
-			if loopAmount > 1
-				Sleep(math.random(10,(MouseClickRateOffset or 10)))
-		}
-	}
-
-	if SelectedProcessExe {
-		local allWindows := WinGetList("ahk_exe " SelectedProcessExe)
-		for ID in allWindows {
-			if (ID != process) and WinExist(ID) {
-				; Use the local variable instead of calling WinGetTitle("A") again
-				if (hoverWindow and (hoverWindow != ID and hoverWindow != WinGetID(ID))) and activeTitle
-					ActivateWindow(ID)
-				doClick(ID, MouseClicks or 5)
-			}
-		}
-	}
-	
-	; Use the local variable instead of calling WinGetTitle("A") again
-	if (hoverWindow and (hoverWindow != process and hoverWindow != WinGetID(process))) and activeTitle
-		ActivateWindow()
-
-	doClick(process, MouseClicks or 5)
-}
-
 isPixelColorInRadius(x, y, color, radius) {
 	local pixelColor := PixelGetColor(x, y, "RGB")
 	local distance := Sqrt((x - x) ** 2 + (y - y) ** 2)
@@ -2805,14 +2809,6 @@ isPixelColorInRadius(x, y, color, radius) {
 ; ############################### ;
 ; ########### Classes ########### ;
 ; ############################### ;
-
-tick() {
-    static EPOCH_OFFSET := 116444736000000000  ; 100ns intervals from 1601 to 1970
-    buf := Buffer(8, 0)                         ; allocate 8 bytes
-    DllCall("GetSystemTimeAsFileTime", "Ptr", buf.Ptr)
-    fileTime := NumGet(buf, 0, "Int64")         ; read 64-bit FILETIME
-    return math.round((fileTime - EPOCH_OFFSET) / 10000000) ; convert to seconds
-}
 
 class arr extends Array {
 	GetIndex(value) {
@@ -2984,7 +2980,19 @@ class Color3 {
 	}	
 }
 
+; ################################ ;
+; ####### Debug Functions ######## ;
+; ################################ ;
 
+tick() {
+    static EPOCH_OFFSET := 116444736000000000  ; 100ns intervals from 1601 to 1970
+    buf := Buffer(8, 0)                         ; allocate 8 bytes
+    DllCall("GetSystemTimeAsFileTime", "Ptr", buf.Ptr)
+    fileTime := NumGet(buf, 0, "Int64")         ; read 64-bit FILETIME
+	; Free the buffer
+	buf := unset                                   ; release the buffer
+    return math.round((fileTime - EPOCH_OFFSET) / 10000000) ; convert to seconds
+}
 
 Print(vals*) {
 	local output := ""
@@ -2993,30 +3001,44 @@ Print(vals*) {
 	return output
 }
 
-; Internal recursive handler
 PrintValue(val, indent) {
 	local output := ""
 
-	if (!IsObject(val)) {
+	if !IsObject(val) {
 		return indent . val . "`n"
 	}
 
-	if (IsA(val, "array"))
-		output .= indent . "Array:`n"
-	else if (IsA(val, "function"))
-		output .= indent . "Function:`n"
-	else if (IsA(val, "gui"))
-		output .= indent . "GUI:`n"
-	else if (IsA(val, "object"))
-		output .= indent . "Object:`n"
-	else
-		output .= indent . "Unknown:`n"
+	local typename := ""
+	try typename := Type(val)
+	catch
+		typename := "Unknown"
 
-	for key, item in val {
-		if (IsObject(item))
-			output .= indent . "  " . key . ":`n" . PrintValue(item, indent . "    ")
-		else
-			output .= indent . "  " . key . ": " . item . "`n"
+	; Use known names for readability
+	switch typename {
+		case "Array":
+			output .= indent . "Array:`n"
+		case "Map":
+			output .= indent . "Map:`n"
+		case "Func":
+			output .= indent . "Function:`n"
+		case "Gui":
+			output .= indent . "GUI:`n"
+		case "BoundFunc":
+			output .= indent . "Bound Function:`n"
+		default:
+			output .= indent . typename . ":`n"
+	}
+
+	; Try to iterate contents safely
+	try {
+		for key, item in val {
+			if IsObject(item)
+				output .= indent . "  " . key . ":`n" . PrintValue(item, indent . "    ")
+			else
+				output .= indent . "  " . key . ": " . item . "`n"
+		}
+	} catch {
+		output .= indent . "  (non-iterable)" . "`n"
 	}
 
 	return output
