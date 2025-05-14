@@ -3,7 +3,7 @@
 Persistent
 
 global initializing := true
-global version := "2.6.4"
+global version := "2.7.0"
 
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
@@ -305,7 +305,6 @@ GetUpdate(*) {
 	global latestVersion := GetLatestReleaseVersion()
 	
 	global localScriptDir
-	local localScriptPath := localScriptDir "JACS.ahk"
 	local getStatus := IsVersionNewer(version, latestVersion)
     if getStatus == "Outdated" {
         if !autoUpdateDontAsk {
@@ -997,13 +996,17 @@ CreateWindowSettingsGUI(*) {
 	global intControlColor
 	global ControlTextColor
 
+	local Popout_MarginX := 10
+	local Popout_MarginY := 10
+
 	CloseSettingsUI(*) {
+		SetTimer(mouseHoverDescription,0)
+		
 		if WindowSettingsUI {
 			WindowSettingsUI.Destroy()
 			WindowSettingsUI := ""
 		}
 
-		SetTimer(mouseHoverDescription,0)
 		WinActivate(MainUI.Title)
 	}
 
@@ -1017,7 +1020,7 @@ CreateWindowSettingsGUI(*) {
 	WindowSettingsUI.BackColor := intWindowColor
 	WindowSettingsUI.OnEvent("Close", CloseSettingsUI)
 	WindowSettingsUI.Title := "Window Settings"
-
+	WindowSettingsUI.MarginX := Popout_MarginX
 	local activeText_Sound := (playSounds == 1 and "All") or (playSounds == 2 and "Less") or (playSounds == 3 and "None")
 	local themeNames := GetThemeListFromINI(localScriptDir "\themes.ini")
 
@@ -1027,7 +1030,9 @@ CreateWindowSettingsGUI(*) {
 	if SoundToggleButton
 		SoundToggleButton := ""
 
-	local Popout_Margin_Width := Popout_Width-WindowSettingsUI.MarginX
+	local Popout_Margin_Width := Popout_Width-(WindowSettingsUI.MarginX*2)
+	local Popout_Margin_Height := Popout_Height-(WindowSettingsUI.MarginY*2)
+
 	AlwaysOnTopButton := WindowSettingsUI.Add("Button", "Section Center vAlwaysOnTopButton h" buttonHeight " w" Popout_Margin_Width, "Always-On-Top: " AOT_Text)
 	SoundToggleButton := WindowSettingsUI.Add("Button", "xm Section Center vSoundToggleButton h" buttonHeight " w" Popout_Margin_Width, "Sounds: " activeText_Sound)
 	themeLabel := WindowSettingsUI.Add("Text", "xm Left vThemeLabel h" buttonHeight*0.95 " w" Popout_Margin_Width, "Theme: " . currentTheme)
@@ -1035,8 +1040,12 @@ CreateWindowSettingsGUI(*) {
 	editTheme := WindowSettingsUI.Add("Button","x+1 y+-22 Center vEditThemeButton h" buttonHeight+6 " w" Popout_Margin_Width*0.25, "Edit Theme")
 	refreshTheme := WindowSettingsUI.Add("Button", "x+1 Center vRefreshThemeButton h" buttonHeight+6 " w" buttonHeight+6, "🔄")
 	ProcessLabel := WindowSettingsUI.Add("Text", "xm Left h" buttonHeight " vProcessLabel w" Popout_Margin_Width, "Searching for: " SelectedProcessExe)
-	ProcessDropdown := WindowSettingsUI.Add("DropDownList", "xm y+-5 R10 Center vProcessDropdown h" buttonHeight " w" Popout_Margin_Width, [SelectedProcessExe])
-	DescriptionBox := WindowSettingsUI.Add("Text", "xm y+15 Section Left vDescriptionBox h" . Popout_Height/2 . " w" Popout_Margin_Width)
+	ProcessDropdown := WindowSettingsUI.Add("DropDownList", "xm y+0 R10 Center vProcessDropdown h" buttonHeight " w" Popout_Margin_Width, [SelectedProcessExe])
+
+	local groupPadding := 20
+	descriptionGroup := WindowSettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" 0 " w" Popout_Margin_Width, "")
+	DescriptionBoxBG := WindowSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . (0) . " w" Popout_Margin_Width - groupPadding)
+	DescriptionBox := WindowSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . (0) . " w" Popout_Margin_Width - groupPadding)
 
 	; Get index of the current theme name
 	for index, name in themeNames {
@@ -1048,15 +1057,19 @@ CreateWindowSettingsGUI(*) {
 	
 	; ################################# ;
 	; Slider Description Box
+	local ThemeMap := LoadThemeFromINI(currentTheme)
 	
+	descriptionGroup.Opt("Background" intWindowColor . " c" ControlTextColor)
+	DescriptionBoxBG.Opt("Background" intWindowColor . " c" ControlTextColor)
 	AlwaysOnTopButton.Opt("Background" intWindowColor)
 	SoundToggleButton.Opt("Background" intWindowColor)
 	themeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 	editTheme.Opt("Background" intWindowColor . " c" ControlTextColor)
 	refreshTheme.Opt("Background" intWindowColor . " c" ControlTextColor)
 	ProcessLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBox.Opt("+Border Background" intWindowColor . " c" ControlTextColor)
+	DescriptionBox.Opt("BackgroundTrans" . " c" ControlTextColor)
 
+	descriptionGroup.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	AlwaysOnTopButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	SoundToggleButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	themeLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
@@ -1146,9 +1159,22 @@ CreateWindowSettingsGUI(*) {
 	}
 
 	updateDescriptionBox(newText := "") {
-		DescriptionBox.Text := newText
-	}
+		if newText == DescriptionBox.Text
+			return
 
+		ControlGetPos(&groupX, &groupY, &groupW, &groupH, descriptionGroup)
+		DescriptionBox.Text := newText
+
+		local textWidth := MeasureTextWidth(DescriptionBox, newText)
+		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
+
+		descriptionGroup.Move(,,, textHeight+(groupPadding*2))
+		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2))
+		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
+		
+		WindowSettingsUI.Show("AutoSize")
+	}
+	
 	mouseHoverDescription(*)
 	{
 		if not WindowSettingsUI or not DescriptionBox
@@ -1157,8 +1183,10 @@ CreateWindowSettingsGUI(*) {
 		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
 		local targetControl := ""
 
-		if HoverControl
-		{
+		if HoverControl && HoverWindow && HoverWindow {
+			if HoverWindow != WindowSettingsUI.Hwnd
+				return
+
 			try targetControl := WindowSettingsUI.__Item[HoverControl]
 			if WindowSettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
 				try updateDescriptionBox(Descriptions[targetControl.Name])
@@ -1168,13 +1196,13 @@ CreateWindowSettingsGUI(*) {
 			}
 		}
 	}
-
 	; Calculate center position
 	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
-	updateGUITheme(WindowSettingsUI)
+	CheckDeviceTheme()
+	updateDescriptionBox(" ")
 	WindowSettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
 
 	SetTimer(mouseHoverDescription,50)
@@ -1252,8 +1280,15 @@ CreateClickerSettingsGUI(*) {
 	SettingsUI.OnEvent("Close", CloseSettingsUI)
 	SettingsUI.Title := "Clicker Settings"
 	
+	
+	local Popout_MarginX := 10
+	local Popout_MarginY := 10
+	local groupPadding := 20
+	
+	local Popout_Margin_Width := Popout_Width - (SettingsUI.MarginX*2)
+	local Popout_Margin_Height := Popout_Height - (SettingsUI.MarginY*2)
+	
 	local buddyWidth := 40
-	local Popout_Margin_Width := Popout_Width - SettingsUI.MarginX
 	local sliderWidth := (Popout_Margin_Width - ((buddyWidth+SettingsUI.MarginX)*2))
 
 	MouseSpeedLabel := SettingsUI.Add("Text", "Section Center vMouseSpeedLabel h" buttonHeight " w" Popout_Margin_Width, "Mouse Speed: " . math.clamp(MouseSpeed,0,maxSpeed) . " ms")
@@ -1276,8 +1311,10 @@ CreateClickerSettingsGUI(*) {
 	SendKeyButton := SettingsUI.Add("Button", "x+1 Section Center vSendKey h" buttonHeight " w" Popout_Margin_Width/2, "Send Key: " . (keytoSend == "LButton" ? "Left Click" : "Right Click"))
 	
 	; Slider Description Box
-	DescriptionBox := SettingsUI.Add("Text", "xm Section Left vDescriptionBox h" . Popout_Height/3.25 . " w" Popout_Margin_Width)
-	
+	descriptionGroup := SettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" Popout_Margin_Height/1.75 " w" Popout_Margin_Width, "")
+	DescriptionBoxBG := SettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . Popout_Margin_Height/1.75 - (groupPadding*1.5) . " w" Popout_Margin_Width - groupPadding)
+	DescriptionBox := SettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . Popout_Margin_Height/1.75 - (groupPadding*1.5) . " w" Popout_Margin_Width - groupPadding)
+
 	; Hover Descriptions
 	local Descriptions := Map(
 		; Sliders
@@ -1341,14 +1378,15 @@ CreateClickerSettingsGUI(*) {
 	EditCooldownButton.Opt("Background" intWindowColor "")
 	ToggleMouseLock.Opt("Background" intWindowColor " c" ControlTextColor)
 	SendKeyButton.Opt("Background" intWindowColor " c" ControlTextColor)
+	descriptionGroup.Opt("Background" intWindowColor . " c" ControlTextColor)
+	DescriptionBoxBG.Opt("Background" intWindowColor . " c" ControlTextColor)
+	DescriptionBox.Opt("Background" intWindowColor . " c" ControlTextColor)
 
 	MouseSpeedSlider.Opt("ToolTipBottom Buddy1MS_Buddy1 Buddy2MS_Buddy2 TickInterval" maxSpeed/10 " Range0-" maxSpeed)
 	ClickRateSlider.Opt("ToolTipBottom Buddy1Rate_Buddy1 Buddy2Rate_Buddy2 TickInterval" maxRate/10 " Range0-" maxRate)
 	ClickRadiusSlider.Opt("ToolTipBottom Buddy1ClickRadiusBuddy1 Buddy2ClickRadiusBuddy2 TickInterval" maxRadius/10 " Range0-" maxRadius)
 	MouseClicksSlider.Opt("ToolTipBottom Buddy1MouseClicksBuddy1 Buddy2MouseClicksBuddy2 TickInterval" maxClicks/10 " Range1-" maxClicks)
 	CooldownSlider.Opt("ToolTipBottom Buddy1Cooldown_Buddy1 Buddy2Cooldown_Buddy2 TickInterval" (maxCooldown-10)/15 " Range10-" maxCooldown)
-	
-	DescriptionBox.Opt("+Border Background" intWindowColor . " c" ControlTextColor)
 
 	MouseSpeedSlider.Value := math.clamp(MouseSpeed,0,maxSpeed) or 0
 	ClickRateSlider.Value := math.clamp(MouseClickRateOffset,0,maxSpeed) or 0
@@ -1367,15 +1405,14 @@ CreateClickerSettingsGUI(*) {
 	updateSliderValues(CooldownSlider,"")
 	
 	; Functions
-	CloseSettingsUI(*)
-	{
-		if SettingsUI
-		{
+	CloseSettingsUI(*) {
+		SetTimer(mouseHoverDescription,0)
+
+		if SettingsUI {
 			SettingsUI.Destroy()
 			SettingsUI := ""
 		}
 
-		SetTimer(mouseHoverDescription,0)
 		WinActivate(MainUI.Title)
 	}
 	; Slider update function
@@ -1494,7 +1531,20 @@ CreateClickerSettingsGUI(*) {
 	}
 	
 	updateDescriptionBox(newText := "") {
+		if newText == DescriptionBox.Text
+			return
+
+		ControlGetPos(&groupX, &groupY, &groupW, &groupH, descriptionGroup)
 		DescriptionBox.Text := newText
+
+		local textWidth := MeasureTextWidth(DescriptionBox, newText)
+		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
+
+		descriptionGroup.Move(,,, textHeight+(groupPadding*2))
+		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2.25))
+		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
+		
+		SettingsUI.Show("AutoSize")
 	}
 
 	mouseHoverDescription(*)
@@ -1505,8 +1555,9 @@ CreateClickerSettingsGUI(*) {
 		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
 		local targetControl := ""
 
-		if HoverControl
-		{
+		if HoverControl && HoverWindow && HoverWindow {
+			if HoverWindow != SettingsUI.Hwnd
+				return
 			try targetControl := SettingsUI.__Item[HoverControl]
 			if SettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
 				try updateDescriptionBox(Descriptions[targetControl.Name])
@@ -1526,9 +1577,9 @@ CreateClickerSettingsGUI(*) {
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
-	updateGUITheme(SettingsUI)
+	updateDescriptionBox(" ")
+	CheckDeviceTheme()
 	SettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
-	updateGUITheme(SettingsUI)
 
 	SetTimer(mouseHoverDescription,50)
 }
@@ -1556,7 +1607,9 @@ CreateScriptSettingsGUI(*) {
 	global ScriptDirButton
 	global AddToBootupFolderButton
 	local DescriptionBox := ""
-	
+	local descriptionGroup := ""
+	local DescriptionBoxBG := ""
+
 	; Global Save Data
 	global ScriptSettingsUI
 	global AlwaysOnTopActive
@@ -1614,6 +1667,13 @@ CreateScriptSettingsGUI(*) {
 	Popout_Margin_Width := Popout_Width-(ScriptSettingsUI.MarginX*2)
 	Popout_Margin_Height := Popout_Height-(ScriptSettingsUI.MarginY*2)
 
+	local Popout_MarginX := 10
+	local Popout_MarginY := 10
+	local groupPadding := 20
+	
+	local Popout_Margin_Width := Popout_Width - (ScriptSettingsUI.MarginX*2)
+	local Popout_Margin_Height := Popout_Height - (ScriptSettingsUI.MarginY*2)
+
 	EditButton := 				ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vEditButton Section Center", "View Script")
 	ReloadButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vReloadButton xs", "Relaunch Script")
 	ExitButton := 				ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vExitButton xs", "Close Script")
@@ -1635,7 +1695,10 @@ CreateScriptSettingsGUI(*) {
 			}
 		}
 		
-		DescriptionBox := ScriptSettingsUI.Add("Text","xm h" remainingHeight " w" Popout_Margin_Width " xm Section Left vDescriptionBox")
+		; Slider Description Box
+		descriptionGroup := ScriptSettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" Popout_Margin_Height/1.75 " w" Popout_Margin_Width, "")
+		DescriptionBoxBG := ScriptSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . Popout_Margin_Height/1.75 - (groupPadding*1.5) . " w" Popout_Margin_Width - groupPadding)
+		DescriptionBox := ScriptSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . Popout_Margin_Height/1.75 - (groupPadding*1.5) . " w" Popout_Margin_Width - groupPadding)
 	}
 	
 	evenlySpaceControls()
@@ -1654,7 +1717,7 @@ CreateScriptSettingsGUI(*) {
 	EditorButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	ScriptDirButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	AddToBootupFolderButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	DescriptionBox.SetFont("s10 w700", "Consolas")
+	DescriptionBox.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 
 	EditButton.Opt("Background" intWindowColor)
 	ReloadButton.Opt("Background" intWindowColor)
@@ -1662,8 +1725,10 @@ CreateScriptSettingsGUI(*) {
 	EditorButton.Opt("Background" intWindowColor)
 	ScriptDirButton.Opt("Background" intWindowColor)
 	AddToBootupFolderButton.Opt("Background" intWindowColor)
-	DescriptionBox.Opt("+Border Background" intWindowColor " c" ControlTextColor)
-	
+	descriptionGroup.Opt("Background" intWindowColor . " c" ControlTextColor)
+	DescriptionBoxBG.Opt("Background" intWindowColor . " c" ControlTextColor)
+	DescriptionBox.Opt("Background" intWindowColor . " c" ControlTextColor)
+
 	; Hover Descriptions
 	local Descriptions := Map(
 		; Sliders
@@ -1676,18 +1741,31 @@ CreateScriptSettingsGUI(*) {
 		"ReloadButton", "Reload the script",
 	)
 
-	CloseSettingsUI(*)
-	{
+	CloseSettingsUI(*) {
+		SetTimer(mouseHoverDescription,0)
+
 		if ScriptSettingsUI {
 			ScriptSettingsUI.Destroy()
 			ScriptSettingsUI := ""
 		}
-		SetTimer(mouseHoverDescription,0)
 		WinActivate(MainUI.Title)
 	}
 
 	updateDescriptionBox(newText := "") {
+		if newText == DescriptionBox.Text
+			return
+
+		ControlGetPos(&groupX, &groupY, &groupW, &groupH, descriptionGroup)
 		DescriptionBox.Text := newText
+
+		local textWidth := MeasureTextWidth(DescriptionBox, newText)
+		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
+
+		descriptionGroup.Move(,,, textHeight+(groupPadding*2))
+		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2))
+		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
+		
+		ScriptSettingsUI.Show("AutoSize")
 	}
 
 	mouseHoverDescription(*)
@@ -1698,8 +1776,9 @@ CreateScriptSettingsGUI(*) {
 		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
 		local targetControl := ""
 
-		if HoverControl
-		{
+		if HoverControl && HoverWindow && HoverWindow {
+			if HoverWindow != ScriptSettingsUI.Hwnd
+				return
 			try targetControl := ScriptSettingsUI.__Item[HoverControl]
 			if ScriptSettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
 				try updateDescriptionBox(Descriptions[targetControl.Name])
@@ -1710,16 +1789,15 @@ CreateScriptSettingsGUI(*) {
 		}
 	}
 
-	updateGUITheme(ScriptSettingsUI)
-	ScriptSettingsUI.Show("AutoSize Hide")
-
 	; Get full window position and size (including title bar)
 	WinGetPos(&MainX, &MainY, &MainW, &MainH, MainUI.Hwnd)
 
 	CenterX := MainX + (MainW // 2) - (Popout_Width // 2)
 	CenterY := MainY + (MainH // 2) - (Popout_Height // 2)
 
-	ScriptSettingsUI.Show("X" . CenterX . " Y" . CenterY . " w" . Popout_Width . " h" . Popout_Height)
+	CheckDeviceTheme()
+	updateDescriptionBox(" ")
+	ScriptSettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . " h" . Popout_Height)
 	SetTimer(mouseHoverDescription,50)
 }
 
@@ -2744,19 +2822,21 @@ ApplyThemeToGui(guiObj, themeMap) {
 		; Skip invalid controls
 		if !ctrl || !ctrl.HasProp("Type")
 			continue
+		
+		local type := ctrl.Type
+		local BG_Invis_Force := InStr(ctrl.Name, "InvisBG_", 1) != 0 ? true : false
 
 		try {
 			fg := "", bg := "", opt := "", fs := "", font := "", fw := ""
-			local type := ctrl.Type
 
 			switch type {
 				case "Button":
-					if InStr(ctrl.Name, "IconButton") = 0 {
+					if InStr(ctrl.Name, "IconButton", 1) {
 						fg := themeMap["ButtonTextColor"]
 						fs := themeMap["ButtonFontSize"]
 						font := themeMap["ButtonFontStyle"]
 						fw := themeMap["ButtonFontWeight"]
-					} else if InStr(ctrl.Name, "InvisBG_") {	
+					} else if InStr(ctrl.Name, "InvisBG_", 1) {	
 						fg := themeMap["ButtonTextColor"]
 						fs := themeMap["ButtonFontSize"]
 						font := themeMap["ButtonFontStyle"]
@@ -2766,31 +2846,51 @@ ApplyThemeToGui(guiObj, themeMap) {
 						continue
 					}
 
-					bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
+					if BG_Invis_Force
+						bg := "Trans"
+					else
+						bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
+					
 					opt := "Background" bg (fg ? " c" fg : "")
-				case "Edit", "Text":
-					if InStr(ctrl.Name, "SideBarBackground") {
-						local doSideBarDebug := false
-						if doSideBarDebug
-							bg := "cc0000"
-						else {
-							bg := "Trans"
+				case "Edit", "Text", "GroupBox":
+					if InStr(ctrl.Name, "SideBarBackground", 1) {
+							local doSideBarDebug := false
+							if doSideBarDebug
+								bg := "cc0000"
+							else {
+								bg := "Trans"
 							if ctrl.Visible
 								ctrl.Visible := false
 						}
-					} else if InStr(ctrl.Name, "DescriptionBox") {
-						bg := IsTransparent(themeMap["DescriptionBoxColor"]) ? "Trans" : themeMap["DescriptionBoxColor"] ? themeMap["DescriptionBoxColor"] : themeMap["Background"]
+					} else if InStr(ctrl.Name, "DescriptionBox", 1) {
+						if BG_Invis_Force
+							bg := "Trans"
+						else
+							bg := IsTransparent(themeMap["DescriptionBoxColor"]) ? "Trans" : themeMap["DescriptionBoxColor"] ? themeMap["DescriptionBoxColor"] : themeMap["Background"]
+							fg := themeMap["DescriptionBoxTextColor"]
+					} else if ctrl.Name == "NotificationTitle" {
+						if BG_Invis_Force
+							bg := "Trans"
+						else
+							bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
+						fg := themeMap["HeaderColor"]
+					} else if InStr(ctrl.Name, "Header", 1) {
+						if BG_Invis_Force
+							bg := "Trans"
+						else
+							bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
+						fg := themeMap["HeaderColor"]
+					} else if ctrl.Name == "DescriptionGroupBox" {
+						bg := "Trans"
 						fg := themeMap["DescriptionBoxTextColor"]
-					} else if InStr(ctrl.Name, "NotificationTitle") {
-						bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
-						fg := themeMap["HeaderColor"]
-					} else if InStr(ctrl.Name, "Header") {
-						bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
-						fg := themeMap["HeaderColor"]
-					} else {
-						bg := IsTransparent(themeMap["TextLabelBackgroundColor"]) ? "Trans" : themeMap["TextLabelBackgroundColor"] ? themeMap["TextLabelBackgroundColor"] : themeMap["Background"]
+ 					} else {
+						if BG_Invis_Force
+							bg := "Trans"
+						else
+							bg := IsTransparent(themeMap["TextLabelBackgroundColor"]) ? "Trans" : themeMap["TextLabelBackgroundColor"] ? themeMap["TextLabelBackgroundColor"] : themeMap["Background"]
 						fg := themeMap["TextColor"]
 					}
+
 					opt := "Background" bg " c" fg
 				case "Progress":
 					fg := themeMap["ProgressBarColor"]
@@ -2824,10 +2924,10 @@ ApplyThemeToGui(guiObj, themeMap) {
 			)
 
 			if needsUpdate {
-				try ctrl.SetFont("s" fs " w" fw, font)
-
 				try ctrl.Opt(opt)
+				try ctrl.SetFont("s" fs " w" fw, font)
 				try ctrl.Redraw()
+
 				ctrl._lastFG := fg
 				ctrl._lastBG := bg
 				ctrl._lastFS := fs
@@ -2903,24 +3003,6 @@ class math {
 	}
 	static isFloat(value) {
 		return (value is Float)
-	}
-	static isString(value) {
-		return (value is String)
-	}
-	static isArray(value) {
-		return (value is Array)
-	}
-	static isObject(value) {
-		return (value is Object)
-	}
-	static isFunc(value) {
-		return (value is Func)
-	}
-	static isMap(value) {
-		return (value is Map)
-	}
-	static isBuffer(value) {
-		return (value is Buffer)
 	}
 	static min(value1, value2) {
 		return Min(value1, value2)
@@ -3139,6 +3221,35 @@ IsFunc(obj) {
 	return false
 }
 
+MeasureWrappedTextHeight(ctrl, text) {
+	rc := Buffer(16, 0) ; RECT (left, top, right, bottom)
+	; Set width limit to control's client width
+	client := Buffer(16, 0)
+	DllCall("GetClientRect", "ptr", ctrl.Hwnd, "ptr", client)
+	clientW := NumGet(client, 8, "int")
+
+	; Initialize RECT with desired width and zero height
+	NumPut("int", 0, rc, 0)              ; left
+	NumPut("int", 0, rc, 4)              ; top
+	NumPut("int", clientW, rc, 8)        ; right
+	NumPut("int", 0, rc, 12)             ; bottom
+
+	hdc := DllCall("GetDC", "ptr", ctrl.Hwnd, "ptr")
+	hFont := SendMessage(0x31, 0, 0, ctrl)
+	if hFont
+		DllCall("SelectObject", "ptr", hdc, "ptr", hFont)
+
+	DT_WORDBREAK := 0x10
+	DT_CALCRECT := 0x400
+	flags := DT_WORDBREAK | DT_CALCRECT
+
+	DllCall("DrawText", "ptr", hdc, "str", text, "int", -1, "ptr", rc, "uint", flags)
+	DllCall("ReleaseDC", "ptr", ctrl.Hwnd, "ptr", hdc)
+
+	; Height = bottom - top
+	return NumGet(rc, 12, "int") - NumGet(rc, 4, "int")
+}
+
 MeasureTextWidth(ctrl, text) {
 	static SIZE := Buffer(8, 0)  ; holds width (int32) and height (int32)
 	local L_hwnd := ctrl.Hwnd
@@ -3153,6 +3264,23 @@ MeasureTextWidth(ctrl, text) {
 
 	width := NumGet(SIZE, 0, "int")
 	return width
+}
+
+MeasureTextHeight(ctrl, text := "Ag") {
+	static SIZE := Buffer(8, 0)  ; holds width (int32) and height (int32)
+	local L_hwnd := ctrl.Hwnd
+	hdc := DllCall("GetDC", "ptr", L_hwnd, "ptr")
+	
+	hFont := SendMessage(0x31, 0, 0, ctrl) ; WM_GETFONT
+	if hFont
+		DllCall("SelectObject", "ptr", hdc, "ptr", hFont)
+
+	; Use a typical character pair to measure full ascent + descent height
+	DllCall("GetTextExtentPoint32", "ptr", hdc, "str", text, "int", StrLen(text), "ptr", SIZE)
+	DllCall("ReleaseDC", "ptr", L_hwnd, "ptr", hdc)
+
+	height := NumGet(SIZE, 4, "int")
+	return height
 }
 
 DownloadURL(url, filename := "") {
@@ -3281,29 +3409,6 @@ GetSelectedProcessName() {
 	if !IniSectionExists(ProfilesDir, "SelectedProcessExe")
 		updateIniProfileSetting(ProfilesDir, "SelectedProcessExe", "Process", "RobloxPlayerBeta.exe")
     return readIniProfileSetting(ProfilesDir, "SelectedProcessExe", "Process", "RobloxPlayerBeta.exe")
-}
-
-IniSectionExists(fileOrLines, sectionName) {
-    if Type(fileOrLines) = "String" {
-        if !FileExist(fileOrLines)
-            return false
-        lines := StrSplit(FileRead(fileOrLines), "`n")
-    } else if Type(fileOrLines) = "Array" {
-        lines := fileOrLines
-    } else {
-        throw ValueError("Invalid type for IniSectionExists(): must be a file path or array of lines.")
-    }
-
-    sectionHeader := "[" sectionName "]"
-    for line in lines {
-        if Trim(line) = sectionHeader
-            return true
-    }
-    return false
-}
-
-IniKeyExists(filePath, section, key) {
-    return IniRead(filePath, section, key, "__MISSING__") != "__MISSING__"
 }
 
 createDefaultSettingsData(*) {
@@ -3445,14 +3550,38 @@ createDefaultDirectories(*) {
 	}
 }
 
-; ################################ ;
-
 IsAltTabOpen() {
     return (
         WinExist("ahk_class MultitaskingViewFrame")
         || WinExist("ahk_class TaskSwitcherWnd")
         || WinExist("ahk_class #32771")
     ) != 0
+}
+
+; ################################ ;
+; ####### INI Functions ######### ;
+
+IniSectionExists(fileOrLines, sectionName) {
+    if Type(fileOrLines) = "String" {
+        if !FileExist(fileOrLines)
+            return false
+        lines := StrSplit(FileRead(fileOrLines), "`n")
+    } else if Type(fileOrLines) = "Array" {
+        lines := fileOrLines
+    } else {
+        throw ValueError("Invalid type for IniSectionExists(): must be a file path or array of lines.")
+    }
+
+    sectionHeader := "[" sectionName "]"
+    for line in lines {
+        if Trim(line) = sectionHeader
+            return true
+    }
+    return false
+}
+
+IniKeyExists(filePath, section, key) {
+    return IniRead(filePath, section, key, "__MISSING__") != "__MISSING__"
 }
 
 readIniProfileSetting(filePath, section, key, default := "", type := "") {
@@ -3762,10 +3891,19 @@ SendNotification(message, config := Map(
 	ApplyThemeToGui(NotiInnerGui, LoadThemeFromINI(currentTheme))
 	WinSetTransparent(0, id)
 	SetTimer((*) => FadeWindow(id, "in", 500), -1, id)
-
 	themeFunctions[id] := SetTimer(() => NotiShellGui.BackColor := getActiveStatusColor(), 500, id)
 	closeFunctions[id] := SetTimer(() => closeNotification(id), -duration, id)
-
+	
+	if IsFunc(onNo)
+		SetTimer(() => onNo.Call(), -duration, id)
+	else if IsFunc(onOk)
+		SetTimer(() => onOk.Call(), -duration, id)
+	else if IsFunc(onCancel)
+		SetTimer(() => onCancel.Call(), -duration, id)
+	else if IsFunc(onClose)
+		SetTimer(() => onClose.Call(), -duration, id)
+	
+	
 	; Close & dequeue logic 
 	closeNotification(hwnd := id) {
 		if !slotAssignments.Has(hwnd)
@@ -3869,16 +4007,6 @@ getControlSize(ctrlObj) {
 	local x, y, w, h
 	ctrlObj.GetPos(&x, &y, &w, &h)
 	return {X: x, Y: y, W: w, H: h}
-}
-
-removeFromArray(array, item) {
-	for i, value in array {
-		if (value == item) {
-			array.RemoveAt(i)
-			break
-		}
-	}
-	return array
 }
 
 SlideGUI(GUIHwnd, x, y, duration := 200) {
@@ -4070,6 +4198,16 @@ ColorizeCredits(creditsLinkCtrl) {
     if (Round(Credits_CurrentColor.R) = Credits_TargetColor.R && Round(Credits_CurrentColor.G) = Credits_TargetColor.G && Round(Credits_CurrentColor.B) = Credits_TargetColor.B) {
         Credits_TargetColor := {R: Random(10, 99), G: Random(10, 99), B: Random(10, 99)}
     }
+}
+
+removeFromArray(array, item) {
+	for i, value in array {
+		if (value == item) {
+			array.RemoveAt(i)
+			break
+		}
+	}
+	return array
 }
 
 ArrayHasValue(arr, target) {
