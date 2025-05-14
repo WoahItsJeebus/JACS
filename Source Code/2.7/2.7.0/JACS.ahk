@@ -194,7 +194,7 @@ global buttonFontSize := readIniProfileSetting(ProfilesDir, SelectedProcessExe, 
 global buttonFontWeight := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontWeight", "550", "int")
 global buttonFont := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontStyle", "Consolas")
 
-global wasActiveWindow := false
+global LastActiveWindow := false
 global AcceptedWarning := readIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", false, "bool") and CreateGui() or createWarningUI()
 global tempUpdateFile := ""
 
@@ -552,20 +552,22 @@ CreateGui(*) {
 	ClampMainUIPos()
 	SaveMainUIPosition()
 
-	; ApplyThemeToGui(MainUI, DarkTheme)
 	setTrayIcon(icons[isActive].Icon)
 	
-	CheckDeviceTheme()
 	addTipBox()
-	runNecessaryTimers()
 
-	; debugNotif(refreshRate = 0 ? "Failed to retrieve refresh rate" : "Refresh Rate: " refreshRate " Hz",,,5)
 	if playSounds == 1
 		Loop 2
 			SoundBeep(300, 200)
 	
+	StartProcessWindowWatcher()
+	runNecessaryTimers()
+	
+	CheckDeviceTheme()
+
 	if isActive > 1
 		ToggleCore(,isActive)
+
 
 	initializing := false
 }
@@ -608,6 +610,7 @@ runNecessaryTimers(*) {
 			"Disabled", false
 		),
 	)
+
 	; Run loop functions
 	for FuncName, Data in loopFunctions
 		if not Data["Disabled"] {
@@ -615,8 +618,6 @@ runNecessaryTimers(*) {
 				Sleep(100)
 			SetTimer(Data["Function"], Data["Interval"])
 		}
-
-	StartProcessWindowWatcher()
 }
 
 addTipBox(*) {
@@ -2372,11 +2373,11 @@ RunCore(*) {
 	global SecondsToWait
 	global WaitProgress
 
-	global wasActiveWindow
+	global LastActiveWindow
 	global doMouseLock
 
 	; Check for process
-	if not FindTargetHWND()
+	if !FindTargetHWND()
 		ResetCooldown()
 	; 	ToggleCore(, 2)
 	
@@ -2392,7 +2393,7 @@ RunCore(*) {
 
 		ResetCooldown()
 		
-		if IsAltTabOpen() or (SecondsToWait < 10 and WinActive("A") != FindTargetHWND())
+		if IsAltTabOpen() or (SecondsToWait < 10 and ProcessWindowCache[SelectedProcessExe] and !ProcessWindowCache[SelectedProcessExe].Has(WinActive("A")))
 			return
 		
 		if playSounds == 1
@@ -2419,14 +2420,15 @@ RunCore(*) {
 
 		;---------------
 		; Find and activate processe
-		local targetProcess := FindTargetHWND()
-		try ClickWindow(targetProcess)
+		local target := FindTargetHWND()
+		if target
+			ClickWindow()
 		
 		; Activate previous application window & reposition mouse
 		local lastActiveWindowID := ""
 		try lastActiveWindowID := WinExist(windowID)
 
-		if not wasActiveWindow and lastActiveWindowID and (MinutesToWait > 0 or SecondsToWait > 0) {
+		if not LastActiveWindow and lastActiveWindowID and (MinutesToWait > 0 or SecondsToWait > 0) {
 			WinActivate lastActiveWindowID
 			MouseMove OldPosX, OldPosY, 0
 		}
@@ -2492,28 +2494,52 @@ ToggleSound(*) {
 ; ################################ ;
 FindTargetHWND(*) {
 	global SelectedProcessExe
-	local foundWindow := WinExist("ahk_exe " SelectedProcessExe) and WinExist("ahk_exe " SelectedProcessExe) or ""
-	
-	if !foundWindow
-		return false
+	global ProcessWindowCache
+
+	local foundWindow := ProcessWindowCache.Has(SelectedProcessExe) and ProcessWindowCache[SelectedProcessExe] or false
+	if foundWindow and foundWindow.Length == 1
+		return foundWindow[1]
 	
 	return foundWindow
 }
 
-StartProcessWindowWatcher(exeName := SelectedProcessExe, interval := 5000) {
+StartProcessWindowWatcher(exeName := "") {
+	static watcherTimers := Map()
+	global SelectedProcessExe
 	global ProcessWindowCache
 
+	if !exeName or exeName == ""
+		exeName := SelectedProcessExe
+
 	if !exeName
-		return
+		return SendNotification("No process selected to watch.")
 
-	static watcherTimers := Map()
-
-	if watcherTimers.Has(exeName)
-		return ; Already watching
+	if !watcherTimers.Has(exeName)
+		watcherTimers[exeName] := false
 
 	updateList() {
 		try {
-			ProcessWindowCache[exeName] := WinExist("ahk_exe " exeName) and WinGetList("ahk_exe " exeName) or []
+			local all := WinGetList("ahk_exe " exeName)
+			local filtered := []
+
+			for hwnd in all {
+				try {
+					if !WinExist(hwnd)
+						continue
+					if WinGetMinMax(hwnd) == -1  ; hidden/minimized
+						continue
+					if WinGetTitle(hwnd) == ""   ; no title
+						continue
+					WinGetPos(&x, &y, &w, &h, hwnd)
+					if (w < 200 || h < 200)      ; too small = not real window
+						continue
+					filtered.Push(hwnd)
+				}
+				catch
+					continue
+			}
+
+			ProcessWindowCache[exeName] := filtered
 		}
 		catch {
 			ProcessWindowCache[exeName] := []
@@ -2521,38 +2547,23 @@ StartProcessWindowWatcher(exeName := SelectedProcessExe, interval := 5000) {
 	}
 
 	updateList()
-	watcherTimers[exeName] := true
+
+	if ProcessWindowCache.Has(exeName) && !watcherTimers[exeName]
+			watcherTimers[exeName] := true
 }
 
-ClickWindow(process) {
-	global SelectedProcessExe, wasActiveWindow := false
+ClickWindow() {
+	global SelectedProcessExe, LastActiveWindow := false
 	global MouseSpeed, MouseClickRateOffset, MouseClickRadius, MouseClicks
 	global KeyToSend, MinutesToWait, SecondsToWait
 	global ProcessWindowCache
+	
+	local allWindows := ProcessWindowCache.Has(SelectedProcessExe) ? ProcessWindowCache[SelectedProcessExe] : false
 
-	try wasActiveWindow := WinActive(process) or false
-	MouseGetPos(&mouseX, &mouseY, &hoverWindow)
-	local activeTitle := ""
-	try activeTitle := WinGetTitle("A")
-
-	local processName := WinGetProcessName(process)
-	local allWindows := ProcessWindowCache.Has(processName) ? ProcessWindowCache[processName] : ""
-
-	ActivateWindow(target := process) {
-		try {
-			if (MinutesToWait <= 0 || SecondsToWait <= 0)
-				return
-			if WinGetMinMax(target) == -1 {
-				WinRestore(target)
-				Sleep(100)
-			}
-
-			if !WinActive(target) && WinGetMinMax(target) != -1 {
-				WinActivate(target)
-				; WinWaitActive(target,,250)
-			}
-		}
-	}
+	try
+		LastActiveWindow := WinActive(SelectedProcessExe)
+	catch
+		LastActiveWindow := false
 
 	doClick(targetID, loopAmount := 1) {
 		loop loopAmount {
@@ -2562,13 +2573,13 @@ ClickWindow(process) {
 
 			cachedWindowID := targetID
 			if !cachedWindowID
-				return
+				return MsgBox("Invalid window ID.")
 
 			ActivateWindow(cachedWindowID)
 
 			try WinGetPos(&WindowX, &WindowY, &Width, &Height, cachedWindowID)
 			if (Width <= 0 || Height <= 0)
-				return
+				return MsgBox("Invalid window dimensions.")
 
 			CenterX := WindowX + (Width / 2)
 			CenterY := WindowY + (Height / 2)
@@ -2591,20 +2602,37 @@ ClickWindow(process) {
 	}
 
 	; Loop through all windows of selected exe
-	if allWindows != "" and IsA(allWindows, "array")
-		for ID in allWindows {
-			MouseGetPos(&mouseX, &mouseY, &hoverWindow)
-			if ID != process && ID {
-				if hoverWindow && hoverWindow != ID && hoverWindow != ID && activeTitle
-					doClick(ID, MouseClicks || 5)
+	if IsA(allWindows, "array") {
+		if allWindows.Length > 1 {
+			for ID in allWindows {
+				MouseGetPos(&mouseX, &mouseY, &hoverWindow)
+				if !LastActiveWindow or ID != LastActiveWindow && ID {
+					if hoverWindow && hoverWindow != ID && hoverWindow != ID {
+						doClick(ID, MouseClicks || 5)
+						SendNotification("Clicking on " . ID)
+					}
+				}
+			}
+		} else {
+			doClick(allWindows[1], MouseClicks || 5)
+		}
+	}
+	
+	ActivateWindow(target) {
+		try {
+			if (MinutesToWait <= 0 || SecondsToWait <= 0)
+				return
+			if WinGetMinMax(target) == -1 {
+				WinRestore(target)
+				Sleep(100)
+			}
+
+			if !WinActive(target) && WinGetMinMax(target) != -1 {
+				WinActivate(target)
+				; WinWaitActive(target,,250)
 			}
 		}
-
-	; Ensure main window also gets clicked
-	; if hoverWindow && hoverWindow != process && hoverWindow != WinGetID(process) && activeTitle
-	; 	ActivateWindow()
-
-	doClick(process, MouseClicks || 5)
+	}
 }
 
 isMouseClickingOnTargetWindow(key?, override*) {
@@ -3261,6 +3289,8 @@ IsA(val, typeName) {
 			return val is Integer
 		case "float":
 			return val is Float
+		case "Number":
+			return val is Number
 	}
 }
 
