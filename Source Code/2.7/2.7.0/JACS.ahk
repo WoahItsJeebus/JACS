@@ -214,139 +214,7 @@ OnMessage(0x0112, WM_SYSCOMMAND_Handler)
 DeleteTrayTabs()
 
 A_TrayMenu.Insert("&Reload Script", "Fix GUI", MenuHandler)  ; Creates a new menu item.
-
-MenuHandler(ItemName, ItemPos, MyMenu) {
-	global MainUI_PosX
-	global MainUI_PosY
-	global isUIHidden
-	global SelectedProcessExe
-
-	local VDisplay_Width := SysGet(78) ; SM_CXVIRTUALSCREEN
-	local VDisplay_Height := SysGet(79) ; SM_CYVIRTUALSCREEN
-
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", MainUI_PosX)
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", MainUI_PosY)
-
-	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2, "int")
-	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2, "int")
-
-	if isUIHidden
-		ToggleHideUI(!isUIHidden)
-	
-    CreateGui()
-}
-
-IsVersionNewer(localVersion, onlineVersion) {
-	if !localVersion || !onlineVersion
-		return "Failed"
-
-	localParts := StrSplit(localVersion, ".")
-	onlineParts := StrSplit(onlineVersion, ".")
-	
-	; Compare each version segment numerically
-	Loop localParts.Length {
-		localPart := localParts[A_Index]
-		onlinePart := onlineParts && onlineParts.Has(A_Index) ? onlineParts[A_Index] : unset
-		if !onlinePart or !IsSet(onlinePart)
-			return "Failed"
-
-		; Treat missing parts as 0 (e.g., "1.2" vs "1.2.1")
-		localPart := localPart != "" ? localPart : 0
-		onlinePart := onlinePart != "" ? onlinePart : 0
-
-		if (onlinePart > localPart)
-			return "Outdated"
-		else if (onlinePart < localPart)
-			return "Beta"
-	}
-	return "Updated" ; Versions are equal
-}
-
-GetLatestReleaseVersion(JSON := "") {
-    local URL_API := "https://api.github.com/repos/WoahItsJeebus/JACS/releases/latest"
-    local tempJSONFile := JSON or A_Temp "\latest_release.json"
-    
-	if !JSON
-		try {
-			DownloadURL(URL_API, tempJSONFile)  ; Download the JSON response
-		} catch {
-			return ""
-		}
-    
-    local jsonText := FileRead(tempJSONFile)
-    FileDelete(tempJSONFile)  ; Clean up the temporary file
-    
-    local releaseInfo := JSON_parse(jsonText)
-    
-    if (!releaseInfo or !IsObject(releaseInfo)) {
-        return ""
-    }
-    
-    ; Use a try/catch to safely attempt to access tag_name
-    try {
-        local latestTag := releaseInfo.tag_name
-    } catch {
-        latestTag := ""
-    }
-    
-    if (latestTag = "" or !latestTag) {
-        return ""
-    }
-    
-    return latestTag
-}
-
-GetUpdate(*) {
-    global autoUpdateDontAsk
-    global version
-    
-    global URL_SCRIPT
-	global tempUpdateFile
-	global latestVersion := GetLatestReleaseVersion()
-	
-	global localScriptDir
-	local getStatus := IsVersionNewer(version, latestVersion)
-    if getStatus == "Outdated" {
-        if !autoUpdateDontAsk {
-            SendNotification("Get the latest version from GitHub?", Map(
-				"Type", "yesno",
-				"OnYes", (*) => (
-					autoUpdateDontAsk := true
-					Run("https://github.com/WoahItsJeebus/JACS/releases/latest")
-				),
-				"OnNo", (*) => (
-					autoUpdateDontAsk := true
-					SetTimer(AutoUpdate, 0)
-				),
-				"Duration", 15000,
-				"Title", "JACS - Update Available!",
-			))
-        }
-    } else if getStatus == "Updated" {
-		autoUpdateDontAsk := false
-		SetTimer(AutoUpdate, 0)
-	} else if getStatus == "Beta" {
-		autoUpdateDontAsk := true
-		SendNotification("Using JACS beta version " version ". Continuing with onboard script", Map(
-			"Duration", 5000,
-			"Title", "JACS - Update Status",
-		))
-	} else if getStatus == "Failed" {
-		autoUpdateDontAsk := true
-		SendNotification("JACS update check failed. Continuing with onboard script", Map(
-			"Duration", 5000,
-			"Title", "JACS - Update Status",
-		))
-	} else {
-		autoUpdateDontAsk := true
-		SendNotification("JACS update check returned `"Other`"", Map(
-			"Duration", 5000,
-			"Title", "JACS - Update Status",
-		))
-	}
-}
-
-SetTimer(RollThankYou, 10000)
+SetTimer(RollThankYou, 30000, 100)
 
 ; ================================================= ;
 
@@ -509,9 +377,9 @@ CreateGui(*) {
 	
 	global isActive
 	global MainUI_BG
-
+	
 	global initializing
-	global refreshRate
+	global refreshRate := GetRefreshRate_Alt() or 60
 
 	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
@@ -536,25 +404,13 @@ CreateGui(*) {
 	
 	createMainButtons()
 	createSideBar()
-
-	; LinkUseDefaultColor(VersionHyperlink)
-	
-	; Update ElapsedTimeLabel with the formatted time and total wait time in minutes
     UpdateTimerLabel()
+	addTipBox()
 	
-	; ###################################################################### ;
-	; #################### UI Formatting and Visibility #################### ;
-	; ###################################################################### ;
-	
-	; ToggleHideUI(false)
-	refreshRate := GetRefreshRate_Alt() or 60
 	updateUIVisibility()
 	ClampMainUIPos()
 	SaveMainUIPosition()
-
 	setTrayIcon(icons[isActive].Icon)
-	
-	addTipBox()
 
 	if playSounds == 1
 		Loop 2
@@ -638,8 +494,8 @@ addTipBox(*) {
 	local UI_Margin_Width := UI_Width-MainUI.MarginX
 	local UI_Margin_Height := UI_Height-MainUI.MarginY
 
-	local dummy := MainUI.Add("Text", "Section w" UI_Margin_Width " h" tipHeight " 0x200")  ; dummy container
-	tipBox := MainUI.Add("Text", "ys w" UI_Margin_Width " h" tipHeight " BackgroundTrans vTipBox", "")
+	local dummy := MainUI.Add("Text", "x0 y0 Section w" UI_Margin_Width " h" tipHeight " 0x200")  ; dummy container
+	tipBox := MainUI.Add("Text", "x0 y0 w" UI_Margin_Width " h" tipHeight " BackgroundTrans vTipBox", "")
 	tipBox.SetFont("s" tipHeight/2 " w" buttonFontWeight " Italic", buttonFont)
 	tipBox.Opt("c" ControlTextColor . " BackgroundTrans")
 	
@@ -654,131 +510,6 @@ addTipBox(*) {
 	LoadNewTip()
 }
 
-LoadNewTip(*) {
-	global initializing
-	if initializing
-		return
-	UpdateTipsFile()
-	global tips, tipHeight
-	data := TipScrollData[MainUI]
-	
-	tips := data["TipList"]
-	lastIndexes := data["LastIndexes"]
-	
-	if tips.Length = 0 {
-		data["Ctrl"].Text := "No tips available."
-		data["CurrentText"] := "No tips available."
-		data["Offset"] := UI_Width + 100
-		
-		width := MeasureTextWidth(data["Ctrl"], "No tips available.")
-		data["Ctrl"].Move(UI_Width + 100,10, width, tipHeight)
-		return
-	}
-
-	maxHistory := Max(1, Round(tips.Length * 0.33))
-	candidates := []
-
-	for index, tip in tips {
-		if !ArrayHasValue(lastIndexes, tip)
-			candidates.Push({index: index, tip: tip})
-	}
-	
-	if candidates.Length = 0 {
-		lastIndexes := []
-		for index, tip in tips
-			candidates.Push({index: index, tip: tip})
-	}
-	
-	; Pick a random tip from candidates that wasn't used recently
-	pickRandomCandidate() {
-		; 
-	}
-	choice := candidates[Random(1, candidates.Length)]
-	text := choice.tip
-	
-	data["Ctrl"].Text := text
-	data["CurrentText"] := text
-	data["Offset"] := UI_Width + 100
-	
-	width := MeasureTextWidth(data["Ctrl"], text)
-	data["Ctrl"].Move(UI_Width + 100,10, width, tipHeight)
-
-	lastIndexes.Push(choice.tip)
-	if lastIndexes.Length > maxHistory
-		lastIndexes.RemoveAt(1)
-	data["LastIndexes"] := lastIndexes
-}
-
-LoadTipsFromAHKFile(*) {
-	global tips := []
-
-	local file := A_LocalAppData "\JACS\tips.ahk"
-	if !FileExist(file)
-		return
-
-	local text := FileRead(file)
-	local m := "", tipMatch := ""
-
-	; Try to find the tips := [ ... ] block
-	if RegExMatch(text, "s)tips\s*:=\s*\[\s*(.*?)\s*\]", &m) {
-		rawList := m[1]  ; capture group 1 — the content inside [ ... ]
-		lines := StrSplit(rawList, "`n", "`r")
-		for line in lines {
-			line := Trim(line)
-			; Match quoted string tips like "Tip here",
-			if RegExMatch(line, 's)^`"(.*?)`"', &tipMatch)
-				tips.Push(tipMatch[1])
-		}
-	}
-}	
-
-UpdateTipsFile(*) {
-	url := "https://raw.githubusercontent.com/WoahItsJeebus/JACS/main/Utilities/InfoBarMap.ahk"
-	localPath := A_LocalAppData "\JACS\tips.ahk"
-	try {
-		DownloadURL(url, localPath)
-		LoadTipsFromAHKFile()
-		UpdateAllTipBoxes()
-	} catch as e {
-		LoadTipsFromAHKFile()
-		UpdateAllTipBoxes()
-	}
-}
-
-UpdateAllTipBoxes(*) {
-	global TipScrollData, tips
-
-	for hwnd, data in TipScrollData {
-		data["TipList"] := tips
-		data["LastIndexes"] := []
-	}
-}
-
-ScrollTip(*) {
-	global initializing
-	if initializing
-		return
-
-	data := TipScrollData[MainUI]
-	ctrl := data["Ctrl"]
-	text := data["CurrentText"]
-	offset := data["Offset"]
-
-	; Move leftward
-	offset -= 1
-	ctrl.Move(offset)
-
-	; When it fully scrolls off screen, reset position
-
-	if offset < -(UI_Width) - 100 {
-		Sleep(Random(30000, 90000))
-		return LoadNewTip()
-	}
-	else
-		data["Offset"] := offset
-}
-
-; Create the main buttons and controls
 createMainButtons(*) {
 	global MainUI, intWindowColor, intControlColor, ControlTextColor, linkColor, ProfilesDir
 	global UI_Width, UI_Height, ICON_WIDTH, ICON_SPACING, BUTTON_HEIGHT, HeaderHeight, tipHeight
@@ -878,61 +609,6 @@ createSideBar(*) {
 	; Tooltip hover tracker
 	global currentTooltipIndex := 0
 	SetTimer(CheckSidebarHover, 100)
-}
-
-CheckSidebarHover() {
-	global iconButtons, currentTooltipIndex, ProfilesDir
-
-	MouseGetPos &mx, &my, &winHwnd, &ctrlHwnd, 2
-
-	for idx, btnData in iconButtons {
-		if ctrlHwnd = btnData.control.Hwnd {
-			if currentTooltipIndex != idx {
-				ToolTip(btnData.tooltip)
-				currentTooltipIndex := idx
-			}
-			return
-		}
-	}
-
-	if currentTooltipIndex != 0 {
-		ToolTip()
-		currentTooltipIndex := 0
-	}
-}
-
-ClampMainUIPos(*) {
-	global MainUI
-	global isUIHidden
-	global MainUI_PosX
-	global MainUI_PosY
-	global ProfilesDir
-
-	local VDisplay_Width := SysGet(78) ; SM_CXVIRTUALSCREEN
-	local VDisplay_Height := SysGet(79) ; SM_CYVIRTUALSCREEN
-	
-	WinGetPos(,, &W, &H, MainUI.Title)
-	local X := MainUI_PosX + (W / 2)
-	local Y := MainUI_PosY + (H / 2)
-	local winState := MainUI != "" and WinGetMinMax(MainUI.Title) or "" ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
-	if winState == -1 or winState == ""
-		return
-
-	if X > VDisplay_Width or X < -VDisplay_Width {
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2)
-		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2, "int")
-		
-		if MainUI and not isUIHidden and winState != -1
-			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
-	}
-
-	if Y > VDisplay_Height or Y < (-VDisplay_Height*2) {
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2)
-		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2, "int")
-
-		if MainUI and winState != -1
-			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
-	}
 }
 
 CheckOpenMenus(*) {
@@ -1989,22 +1665,6 @@ ToggleHideUI(newstate) {
 	isUIHidden := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isUIHidden", false, "bool")
 }
 
-updateUIVisibility(*) {
-	global MainUI
-	global isUIHidden
-	global MainUI_PosX
-	global MainUI_PosY
-	
-	if not MainUI
-		return
-
-	local winState := WinGetMinMax(MainUI.Title) ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
-	if isUIHidden
-		MainUI.Hide()
-	else if not isUIHidden and winState != -1
-		MainUI.Show((MainUI_PosX = 0 and MainUI_PosY = 0 and "Center" or "X" . MainUI_PosX . " Y" . MainUI_PosY) " Restore AutoSize")
-}
-
 ToggleStartup(*) {
 	global AddToBootupFolderButton
 	global isInStartFolder
@@ -2066,144 +1726,6 @@ ToggleAOT(*) {
 		WindowSettingsUI.Opt(AOTStatus)
 }
 
-CheckDeviceTheme(*) {
-	global currentTheme
-	global MainUI
-	global SettingsUI
-	global WindowSettingsUI
-	global ExtrasUI
-	global ScriptSettingsUI
-	
-	; Check if themes.ini exists
-	if !FileExist(localScriptDir "\themes.ini")
-		return updateGlobalThemeVariables(currentTheme)
-	
-	if MainUI
-		try updateGUITheme(MainUI)
-	if SettingsUI
-		try updateGUITheme(SettingsUI)
-	if WindowSettingsUI
-		try updateGUITheme(WindowSettingsUI)
-	if ExtrasUI
-		try updateGUITheme(ExtrasUI)
-	if ScriptSettingsUI
-		try updateGUITheme(ScriptSettingsUI)
-}
-
-CooldownEditPopup(*) {
-	
-    global MinutesToWait
-    global SecondsToWait
-    global MainUI
-    global minCooldown
-	global ProfilesDir
-	global SelectedProcessExe
-    local UI_Height := 120
-	local UI_Width := 350
-    local InpBox := InputBox(minCooldown . " - 15 minutes. You can also use formats like `"`1m 30s`"`, `"`10s`"`, or `"`1:30`"`.", "Edit Cooldown", "w" UI_Width " h" UI_Height)
-    
-    if (InpBox.Result = "Cancel")
-        return SecondsToWait
-
-    local inputText := Trim(InpBox.Value)
-    local parsed := {}
-    
-    ; Determine which format the user provided
-    if (InStr(inputText, ":")) {
-        ; Colon-separated format e.g. "1:30"
-        try {
-            parsed := ParseColonFormat(inputText)
-        } catch error as e {
-            MsgBox("Invalid colon format. Please use something like '1:30'.", "Cooldown update error", "T5")
-            return SecondsToWait
-        }
-    } else if (RegExMatch(inputText, "[ms]")) {
-        ; Letter-based format e.g. "1m 30s" or "38s 10m"
-        try {
-            parsed := ParseLetterFormat(inputText)
-        } catch error as e {
-            MsgBox("Invalid time format. Please use a valid format like '1m 30s' or '10s'.", "Cooldown update error", "T5")
-            return SecondsToWait
-        }
-    } else if (IsNumber(inputText)) {
-        ; Pure number is interpreted as minutes
-        parsed := { minutes: inputText+0, seconds: Round((inputText+0) * 60) }
-    } else {
-        MsgBox("Please enter a valid number or time format to update the cooldown!", "Cooldown update error", "T5")
-        return SecondsToWait
-    }
-    
-    ; Clamp the minutes value between minCooldown and 15 minutes
-    parsed.minutes := math.clamp(parsed.minutes, minCooldown, 15)
-    ; Update total seconds accordingly
-    parsed.seconds := Round(parsed.minutes * 60)
-    
-    ; Write the new values to the registry
-    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", parsed.seconds)
-    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", parsed.minutes)
-    MinutesToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", 15, "int")
-    SecondsToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", MinutesToWait * 60, "int")
-    
-    ; Optionally update the UI timer, etc.
-    UpdateTimerLabel()
-    
-    return SecondsToWait
-}
-
-SaveMainUIPosition(*) {
-    global MainUI_PosX
-    global MainUI_PosY
-    global MainUI
-	global monitorNum
-	global ProfilesDir
-	global SelectedProcessExe
-	
-	WinGetPos(&x, &y,,,"ahk_id" MainUI.Hwnd)
-
-	local exists := false
-
-	try
-		exists := WinExist(MainUI.Title) and true
-	catch
-		exists := false
-
-
-	local needsUpdate := false
-	if x == -32000 or !exists {
-		x := Integer(A_ScreenWidth / 2)
-		needsUpdate := true
-	}
-	if y == -32000 or !exists {
-		y := Integer(A_ScreenHeight / 2)
-		needsUpdate := true
-	}
-
-	if needsUpdate {
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", x)
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", y)
-		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", Integer(A_ScreenWidth / 2), "int")
-		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenWidth / 2), "int")
-
-		; if not exiting, reload the GUI to apply the new position
-		if !MainUI
-			return
-		if MainUI and 
-			MainUI.Show("X" . x . " Y" . y)
-		
-		return
-	}
-
-
-    monitorNum := MonitorGetNumberFromPoint(x, y)
-
-    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", x)
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", y)
-    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "monitorNum", monitorNum)
-
-	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", Integer(A_ScreenWidth / 2), "int")
-	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenWidth / 2), "int")
-}
-
 UpdateTimerLabel(*) {
 	global isActive
 	global MinutesToWait
@@ -2238,28 +1760,6 @@ UpdateTimerLabel(*) {
     local finalText  := Round(WaitProgress.Value, 0) "%"
 	if WaitTimerLabel and WaitTimerLabel.Text != finalText
 		WaitTimerLabel.Text := finalText
-}
-
-OpenScriptDir(*) {
-	; SetWorkingDir A_InitialWorkingDir
-	Run("explorer.exe " . A_ScriptDir)
-}
-
-SelectEditor(*) {
-	Editor := FileSelect(2,, "Select your editor", "Programs (*.exe)")
-	if !Editor
-		return
-	RegWrite Format('"{1}" "%L"', Editor), "REG_SZ", "HKCR\AutoHotkeyScript\Shell\Edit\Command"
-}
-
-CloseApp(*) {
-	; SetTimer(SaveMainUIPosition,0)
-	SaveMainUIPosition()
-	ExitApp
-}
-
-EditApp(*) {
-	Edit
 }
 
 ResetCooldown(*) {
@@ -2347,11 +1847,6 @@ ToggleCore(optionalControl?, forceState?, *) {
 	ResetCooldown()
 	SetTimer(RunCore, 0)
 	return
-}
-
-ReloadScript(*) {
-	SaveMainUIPosition()
-	Reload
 }
 
 RunCore(*) {
@@ -2453,6 +1948,162 @@ RunCore(*) {
 	UpdateTimerLabel()
 }
 
+; ############################### ;
+; ########### Classes ########### ;
+; ############################### ;
+
+class arr extends Array {
+	GetIndex(value) {
+		for pos, val in this {
+			if (value == val)
+				return pos
+		}
+		return false
+	}
+
+	GetValue(index) {
+		for pos, val in this
+			if (index == pos)
+				return val or true
+		return false
+	}
+}
+
+class math {
+	static huge(*) {
+		return 2^1024 - 1
+	}
+    static clamp(number, minimum := 0, maximum := math.huge()) {
+        return Min(Max(number, minimum), maximum)
+    }
+	static round(number, decimalPlaces := 0) {
+			return Round(number, decimalPlaces)
+	}
+	static random(min, max := math.huge()) {
+		return Random(min, max)
+	}
+	static isInteger(value) {
+		return (value is Integer)
+	}
+	static isNumber(value) {
+		return (value is Number)
+	}
+	static isFloat(value) {
+		return (value is Float)
+	}
+	static min(value1, value2) {
+		return Min(value1, value2)
+	}
+	static max(value1, value2) {
+		return Max(value1, value2)
+	}
+	static abs(value) {
+		return Abs(value)
+	}
+	static sqrt(value) {
+		return Sqrt(value)
+	}
+	static sin(value) {
+		return Sin(value)
+	}
+	static cos(value) {
+		return Cos(value)
+	}
+	static tan(value) {
+		return Tan(value)
+	}
+	static asin(value) {
+		return Asin(value)
+	}
+	static acos(value) {
+		return Acos(value)
+	}
+	static atan(value) {
+		return Atan(value)
+	}
+	static log10(value) {
+		return Log(value)
+	}
+	static log(value) {
+		return Ln(value)
+	}
+	static exp(value) {
+		return Exp(value)
+	}
+	static floor(value) {
+		return Floor(value)
+	}
+	static ceil(value) {
+		return Ceil(value)
+	}
+	static sign(value) {
+		return (value > 0) ? 1 : (value < 0) ? -1 : 0
+	}
+	static pi() {
+		return 3.14159265358979323846
+	}
+	static mod(value, divisor) {
+		return Mod(value, divisor)
+	}
+	static pow(base, exponent) {
+		return base ** exponent
+	}
+}
+
+class Color3 {
+	static new(r, g, b) {
+		return Color3.fromRGB(math.clamp(r,,1) * 255, math.clamp(g,,1) * 255, math.clamp(b,,1) * 255)
+	}
+
+	static fromRGB(r, g, b) {
+		return Format("{1:02X}{2:02X}{3:02X}", Round(r), Round(g), Round(b))
+	}
+
+	static fromHex(hex) {
+		if IsA(hex, "string") && SubStr(hex, 1, 1) == "#"
+			hex := "0x" . SubStr(hex, 2)
+		hex := Integer(hex)
+		r := (hex >> 16) & 0xFF
+		g := (hex >> 8) & 0xFF
+		b := hex & 0xFF
+		return [r / 255, g / 255, b / 255]
+	}
+
+	static toRGB(hex) {
+		if IsA(hex, "string") && SubStr(hex, 1, 1) == "#"
+			hex := "0x" . SubStr(hex, 2)
+		hex := Integer(hex)
+		return [
+			(hex >> 16) & 0xFF,
+			(hex >> 8) & 0xFF,
+			hex & 0xFF
+		]
+	}
+
+	static toHSV(r, g, b, &h, &s, &v) {
+		r := r / 255, g := g / 255, b := b / 255
+		local maximum := Max(r, g, b), minimum := Min(r, g, b)
+		local delta := maximum - minimum
+		h := 0, s := 0, v := maximum
+	
+		if (delta != 0) {
+			if (maximum == r)
+				h := Mod((g - b) / delta, 6)
+			else if (maximum == g)
+				h := ((b - r) / delta) + 2
+			else
+				h := ((r - g) / delta) + 4
+	
+			h := h / 6 ; Convert from 0–360 → 0–1 range
+			if (h < 0)
+				h += 1
+			s := delta / maximum
+		}
+
+		return this.new(h, s, v)
+	}	
+}
+
 ; ################################ ;
 ; ####### Sound Functions ######## ;
 ; ################################ ;
@@ -2490,8 +2141,469 @@ ToggleSound(*) {
 }
 
 ; ################################ ;
+; ###### Info Bar Functions ###### ;
+; ################################ ;
+
+LoadNewTip(*) {
+	global initializing
+	if initializing
+		return
+	UpdateTipsFile()
+	global tips, tipHeight
+	data := TipScrollData[MainUI]
+	
+	tips := data["TipList"]
+	lastIndexes := data["LastIndexes"]
+	
+	if tips.Length = 0 {
+		data["Ctrl"].Text := "No tips available."
+		data["CurrentText"] := "No tips available."
+		data["Offset"] := UI_Width + 100
+		
+		width := MeasureTextWidth(data["Ctrl"], "No tips available.")
+		data["Ctrl"].Move(UI_Width + 100,10, width, tipHeight)
+		return
+	}
+
+	maxHistory := Max(1, Round(tips.Length * 0.33))
+	candidates := []
+
+	for index, tip in tips {
+		if !ArrayHasValue(lastIndexes, tip)
+			candidates.Push({index: index, tip: tip})
+	}
+	
+	if candidates.Length = 0 {
+		lastIndexes := []
+		for index, tip in tips
+			candidates.Push({index: index, tip: tip})
+	}
+	
+	; Pick a random tip from candidates that wasn't used recently
+	pickRandomCandidate() {
+		; 
+	}
+	choice := candidates[Random(1, candidates.Length)]
+	text := choice.tip
+	
+	data["Ctrl"].Text := text
+	data["CurrentText"] := text
+	data["Offset"] := UI_Width + 100
+	
+	width := MeasureTextWidth(data["Ctrl"], text)
+	data["Ctrl"].Move(UI_Width + 100,10, width, tipHeight)
+
+	lastIndexes.Push(choice.tip)
+	if lastIndexes.Length > maxHistory
+		lastIndexes.RemoveAt(1)
+	data["LastIndexes"] := lastIndexes
+}
+
+LoadTipsFromAHKFile(*) {
+	global tips := []
+
+	local file := A_LocalAppData "\JACS\tips.ahk"
+	if !FileExist(file)
+		return
+
+	local text := FileRead(file)
+	local m := "", tipMatch := ""
+
+	; Try to find the tips := [ ... ] block
+	if RegExMatch(text, "s)tips\s*:=\s*\[\s*(.*?)\s*\]", &m) {
+		rawList := m[1]  ; capture group 1 — the content inside [ ... ]
+		lines := StrSplit(rawList, "`n", "`r")
+		for line in lines {
+			line := Trim(line)
+			; Match quoted string tips like "Tip here",
+			if RegExMatch(line, 's)^`"(.*?)`"', &tipMatch)
+				tips.Push(tipMatch[1])
+		}
+	}
+}	
+
+UpdateTipsFile(*) {
+	url := "https://raw.githubusercontent.com/WoahItsJeebus/JACS/main/Utilities/InfoBarMap.ahk"
+	localPath := A_LocalAppData "\JACS\tips.ahk"
+	try {
+		DownloadURL(url, localPath)
+		LoadTipsFromAHKFile()
+		UpdateAllTipBoxes()
+	} catch as e {
+		LoadTipsFromAHKFile()
+		UpdateAllTipBoxes()
+	}
+}
+
+UpdateAllTipBoxes(*) {
+	global TipScrollData, tips
+
+	for hwnd, data in TipScrollData {
+		data["TipList"] := tips
+		data["LastIndexes"] := []
+	}
+}
+
+ScrollTip(*) {
+	global initializing
+	if initializing
+		return
+
+	data := TipScrollData[MainUI]
+	ctrl := data["Ctrl"]
+	text := data["CurrentText"]
+	offset := data["Offset"]
+
+	; Move leftward
+	offset -= 1
+	ctrl.Move(offset)
+
+	; When it fully scrolls off screen, reset position
+
+	if offset < -(UI_Width) - 100 {
+		Sleep(Random(30000, 90000))
+		return LoadNewTip()
+	}
+	else
+		data["Offset"] := offset
+}
+
+; ################################ ;
+; ####### Sidebar Functions ###### ;
+; ################################ ;
+
+CheckSidebarHover() {
+	global iconButtons, currentTooltipIndex, ProfilesDir
+
+	MouseGetPos &mx, &my, &winHwnd, &ctrlHwnd, 2
+
+	for idx, btnData in iconButtons {
+		if ctrlHwnd = btnData.control.Hwnd {
+			if currentTooltipIndex != idx {
+				ToolTip(btnData.tooltip)
+				currentTooltipIndex := idx
+			}
+			return
+		}
+	}
+
+	if currentTooltipIndex != 0 {
+		ToolTip()
+		currentTooltipIndex := 0
+	}
+}
+
+; ################################ ;
 ; ####### Window Functions ####### ;
 ; ################################ ;
+
+SendNotification(message, config := Map(
+	"Type", "info",
+	"OnYes", "", "OnNo", "",
+	"OnOk", "", "OnCancel", "", "OnClose", "",
+	"Duration", 4000,
+	"Title", "JACS - Notification"
+)) {
+	static notificationQueue := Map()				; Pending notifications (unique key → data)
+	static notificationQueueKeys := []				; FIFO list of queued keys
+	static closeFunctions := Map()					; Timers for closing
+	static themeFunctions := Map()					; Timers for theme updates
+	static slotAssignments := Map()					; hwnd → slotIndex
+	static notificationGUIs := []					; Active notification windows
+	static notificationCounter := 0					; Unique counter for queue keys
+	static slotStates := [false, false, false]		; Slot availability (3 slots)
+
+	global isActive
+	global intWindowColor, intControlColor, intProgressBarColor
+	global ControlTextColor, linkColor, HeaderHeight
+	global buttonHeight, buttonFontSize, buttonFontWeight, buttonFont
+
+	local popupWidth := 300, popupHeight := 150
+	local popupMarginX := 10, popupMarginY := 10
+
+	; Skip if already shown in active GUIs 
+	for _, hwnd in notificationGUIs {
+		if hwnd && WinExist(hwnd) {
+			ui := GuiFromHwnd(hwnd)
+			for _, ctrl in ui {
+				if ctrl.Type = "Text" && ctrl.Text == message
+					return
+			}
+		}
+	}
+
+	; Skip if message is already queued 
+	for _, key in notificationQueueKeys {
+		if notificationQueue.Has(key) && notificationQueue[key]["Message"] == message
+			return
+	}
+
+	; If 3 active, queue instead 
+	if notificationGUIs.Length >= 3 {
+		notificationCounter += 1
+		uniqueKey := Format("{}_{}", A_TickCount, notificationCounter)
+		notificationQueue[uniqueKey] := Map("Message", message, "Config", config)
+		notificationQueueKeys.Push(uniqueKey)
+		return
+	}
+
+	; Find free visual slot (0 = none) 
+	local slotIndex := 0
+	for i, used in slotStates {
+		if !used {
+			slotIndex := i
+			break
+		}
+	}
+	if slotIndex = 0 {
+		notificationCounter += 1
+		uniqueKey := Format("{}_{}", A_TickCount, notificationCounter)
+		notificationQueue[uniqueKey] := Map("Message", message, "Config", config)
+		notificationQueueKeys.Push(uniqueKey)
+		return
+	}
+	slotStates[slotIndex] := true
+
+	; Config values 
+	local type     := config.Get("Type", "info")
+	local duration := config.Get("Duration", 4000)
+	local onYes    := config.Get("OnYes", "")
+	local onNo     := config.Get("OnNo", "")
+	local onOk     := config.Get("OnOk", "")
+	local onCancel := config.Get("OnCancel", "")
+	local onClose  := config.Get("OnClose", "")
+	local title    := config.Get("Title", "JACS")
+
+	; Create GUI 
+	MonitorGetWorkArea(1, &monLeft, &monTop, &monRight, &monBottom)
+	screenW := monRight - monLeft
+	screenH := monBottom - monTop
+	local shellX := monRight - popupWidth - 25
+	local shellY := screenH / 2
+	local slotYOffsets := [shellY + screenH * 0.25, shellY, shellY - screenH * 0.25]
+	shellY := slotYOffsets[slotIndex]
+	
+	NotiShellGui := Gui("+AlwaysOnTop -Caption +ToolWindow +LastFound")
+	NotiShellGui.BackColor := getActiveStatusColor()
+	NotiInnerGui := Gui("+Parent" NotiShellGui.Hwnd " -Caption +ToolWindow +LastFound +E0x20")
+	NotiInnerGui.MarginX := popupMarginX
+	NotiInnerGui.MarginY := popupMarginY
+	NotiInnerGui.BackColor := intWindowColor
+	NotiInnerGui.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+
+	id := NotiShellGui.Hwnd
+	notificationGUIs.Push(id)
+	slotAssignments[id] := slotIndex
+
+	NotiInnerGui.OnEvent("Escape", closeNotification)
+	NotiShellGui.OnEvent("Escape", closeNotification)
+
+	innerW := popupWidth - (popupMarginX * 2)
+	titleLabel := NotiInnerGui.Add("Text", "vHeader" getUniqueID() " Center w" innerW - (popupMarginX * 2) " h" HeaderHeight, title)
+	titleLabel.SetFont("s16 c" ControlTextColor " w" buttonFontWeight, "Ink Free")
+
+	messageBox := NotiInnerGui.Add("Text", "vMessageBox Center xm w" innerW - (popupMarginX * 2), message)
+	messageBox.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+	
+	local totalButtons := type = "yesno" ? 2 : 1
+	size := getControlSize(messageBox)
+	local totalObjectsHeight := size.H + (buttonHeight*totalButtons) + HeaderHeight + (NotiShellGui.MarginY*2)
+	local FinalHeight := popupHeight + (totalObjectsHeight - popupHeight) + popupMarginY * 2
+
+	; Add buttons
+	btnY := FinalHeight - buttonHeight - popupMarginY
+	
+	singleW := innerW / 2.5
+	singleX := (innerW - singleW) / 2
+	doubleW := innerW / 3
+	doubleX1 := (innerW - doubleW * 2 - popupMarginX/2) / 2
+	doubleX2 := doubleX1 + doubleW + popupMarginX/2
+
+	if (type = "yesno") {
+		btnYes := NotiInnerGui.Add("Button","vInvisBG_Yes" getUniqueID() Format(" x{} y{} w{} h{}", doubleX1, btnY, doubleW, buttonHeight), "Yes")
+		btnNo  := NotiInnerGui.Add("Button","vInvisBG_No" getUniqueID() Format(" x{} y{} w{} h{}", doubleX2, btnY, doubleW, buttonHeight), "No")
+		btnYes.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+		btnNo.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+		btnYes.Opt("BackgroundTrans")
+		btnNo.Opt("BackgroundTrans")
+
+		btnYes.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onYes) ? onYes.Call() : ""))
+		btnNo.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onNo) ? onNo.Call() : ""))
+	} else if (type = "ok") {
+		btnOk := NotiInnerGui.Add("Button", "vInvisBG_Ok" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "OK")
+		btnOk.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onOk) ? onOk.Call() : ""))
+	} else if (type = "cancel") {
+		btnCancel := NotiInnerGui.Add("Button", "vInvisBG_Cancel" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Cancel")
+		btnCancel.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onCancel) ? onCancel.Call() : ""))
+	} else {
+		btnClose := NotiInnerGui.Add("Button", "vInvisBG_Close" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Close")
+		btnClose.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onClose) ? onClose.Call() : ""))
+	}
+
+	NotiShellGui.Show("NoActivate x" shellX " y" shellY " w" popupWidth " h" FinalHeight)
+	NotiInnerGui.Show("NoActivate w" innerW " h" FinalHeight)
+
+	SetRoundedCorners(id, 16)
+	SetRoundedCorners(NotiInnerGui.Hwnd, 16)
+	ApplyThemeToGui(NotiInnerGui, LoadThemeFromINI(currentTheme))
+	WinSetTransparent(0, id)
+	SetTimer((*) => FadeWindow(id, "in", 500), -1, id)
+	themeFunctions[id] := SetTimer(() => NotiShellGui.BackColor := getActiveStatusColor(), 500, id)
+	closeFunctions[id] := SetTimer(() => closeNotification(id), -duration, id)
+	
+	if IsFunc(onNo)
+		SetTimer(() => onNo.Call(), -duration, id)
+	else if IsFunc(onOk)
+		SetTimer(() => onOk.Call(), -duration, id)
+	else if IsFunc(onCancel)
+		SetTimer(() => onCancel.Call(), -duration, id)
+	else if IsFunc(onClose)
+		SetTimer(() => onClose.Call(), -duration, id)
+	
+	
+	; Close & dequeue logic 
+	closeNotification(hwnd := id) {
+		if !slotAssignments.Has(hwnd)
+			return
+	
+		; Get current slot before removal
+		oldSlot := slotAssignments[hwnd]
+	
+		; Remove from GUI tracking
+		removeFromArray(notificationGUIs, hwnd)
+		closeFunctions.Delete(hwnd)
+		themeFunctions.Delete(hwnd)
+		SetTimer(() => FadeWindow(hwnd, "out", 500), -1, hwnd)
+		slotStates[oldSlot] := false
+
+		; Capture current assignments *before* modifying
+		local currentAssignments := slotAssignments.Clone()
+
+		; Now safe to remove the closed notification
+		slotAssignments.Delete(hwnd)
+	
+		; Pull next notification from queue if any
+		if notificationQueueKeys.Length > 0 {
+			nextKey := notificationQueueKeys.RemoveAt(1)
+			next := notificationQueue[nextKey]
+			notificationQueue.Delete(nextKey)
+			SendNotification(next["Message"], next["Config"])
+		}
+	}
+}
+
+IsAltTabOpen() {
+    return (
+        WinExist("ahk_class MultitaskingViewFrame")
+        || WinExist("ahk_class TaskSwitcherWnd")
+        || WinExist("ahk_class #32771")
+    ) != 0
+}
+
+SaveMainUIPosition(*) {
+    global MainUI_PosX
+    global MainUI_PosY
+    global MainUI
+	global monitorNum
+	global ProfilesDir
+	global SelectedProcessExe
+	
+	WinGetPos(&x, &y,,,"ahk_id" MainUI.Hwnd)
+
+	local exists := false
+
+	try
+		exists := WinExist(MainUI.Title) and true
+	catch
+		exists := false
+
+
+	local needsUpdate := false
+	if x == -32000 or !exists {
+		x := Integer(A_ScreenWidth / 2)
+		needsUpdate := true
+	}
+	if y == -32000 or !exists {
+		y := Integer(A_ScreenHeight / 2)
+		needsUpdate := true
+	}
+
+	if needsUpdate {
+		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", x)
+		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", y)
+		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", Integer(A_ScreenWidth / 2), "int")
+		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenWidth / 2), "int")
+
+		; if not exiting, reload the GUI to apply the new position
+		if !MainUI
+			return
+		if MainUI and 
+			MainUI.Show("X" . x . " Y" . y)
+		
+		return
+	}
+
+
+    monitorNum := MonitorGetNumberFromPoint(x, y)
+
+    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", x)
+	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", y)
+    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "monitorNum", monitorNum)
+
+	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", Integer(A_ScreenWidth / 2), "int")
+	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenWidth / 2), "int")
+}
+
+updateUIVisibility(*) {
+	global MainUI
+	global isUIHidden
+	global MainUI_PosX
+	global MainUI_PosY
+	
+	if not MainUI
+		return
+
+	local winState := WinGetMinMax(MainUI.Title) ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
+	if isUIHidden
+		MainUI.Hide()
+	else if not isUIHidden and winState != -1
+		MainUI.Show((MainUI_PosX = 0 and MainUI_PosY = 0 and "Center" or "X" . MainUI_PosX . " Y" . MainUI_PosY) " Restore AutoSize")
+}
+
+ClampMainUIPos(*) {
+	global MainUI
+	global isUIHidden
+	global MainUI_PosX
+	global MainUI_PosY
+	global ProfilesDir
+
+	local VDisplay_Width := SysGet(78) ; SM_CXVIRTUALSCREEN
+	local VDisplay_Height := SysGet(79) ; SM_CYVIRTUALSCREEN
+	
+	WinGetPos(,, &W, &H, MainUI.Title)
+	local X := MainUI_PosX + (W / 2)
+	local Y := MainUI_PosY + (H / 2)
+	local winState := MainUI != "" and WinGetMinMax(MainUI.Title) or "" ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
+	if winState == -1 or winState == ""
+		return
+
+	if X > VDisplay_Width or X < -VDisplay_Width {
+		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2)
+		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2, "int")
+		
+		if MainUI and not isUIHidden and winState != -1
+			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
+	}
+
+	if Y > VDisplay_Height or Y < (-VDisplay_Height*2) {
+		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2)
+		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2, "int")
+
+		if MainUI and winState != -1
+			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
+	}
+}
+
 FindTargetHWND(*) {
 	global SelectedProcessExe
 	global ProcessWindowCache
@@ -2747,8 +2859,150 @@ GuiGetClientHeight(guiObj) {
 }
 
 ; ################################ ;
+; ########## Tray Menu ########### ;
+; ################################ ;
+
+MenuHandler(ItemName, ItemPos, MyMenu) {
+	global MainUI_PosX
+	global MainUI_PosY
+	global isUIHidden
+	global SelectedProcessExe
+
+	local VDisplay_Width := SysGet(78) ; SM_CXVIRTUALSCREEN
+	local VDisplay_Height := SysGet(79) ; SM_CYVIRTUALSCREEN
+
+	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", MainUI_PosX)
+	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", MainUI_PosY)
+
+	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2, "int")
+	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2, "int")
+
+	if isUIHidden
+		ToggleHideUI(!isUIHidden)
+	
+    CreateGui()
+}
+
+DeleteTrayTabs(*) {
+	TabNames := [
+		"&Edit Script",
+		"&Window Spy",
+		"&Pause Script",
+		"&Suspend Hotkeys",
+		"&Help",
+		"&Open"
+	]
+
+	if doDebug
+		return
+
+	if TabNames.Length > 0
+		for _,tab in TabNames
+			A_TrayMenu.Delete(tab)
+}
+
+setTrayIcon(icon := "") {
+	global currentIcon
+	createDefaultDirectories()
+	if FileExist(icon) and icon != currentIcon {
+		TraySetIcon(icon)
+		currentIcon := icon
+		; tell Windows to swap in the new .ico
+		global MainUI
+		global MainUI_Warning
+		if MainUI or MainUI_Warning
+			UpdateGuiIcon(icon)
+	}
+}
+
+UpdateGuiIcon(newIconPath) {
+	global MainUI
+	global MainUI_Warning
+	local MainUI_ID := MainUI and MainUI.Hwnd or ""
+	local MainUI_Warning_ID := MainUI_Warning and MainUI_Warning.Hwnd or ""
+    if !MainUI_ID && !MainUI_Warning_ID
+        throw Error("No user interface found to update icon.")
+	
+    if !FileExist(newIconPath)
+        throw Error("Icon file not found: " newIconPath)
+
+    hIcon := DllCall(
+        "LoadImageW"
+      , "Ptr", 0                     ; hinst
+      , "WStr", newIconPath          ; file
+      , "UInt", 1                    ; IMAGE_ICON
+      , "Int", 0                     ; cx (default)
+      , "Int", 0                     ; cy (default)
+      , "UInt", 0x10                 ; LR_LOADFROMFILE
+      , "Ptr"
+    )
+    if !hIcon
+        throw Error("Failed to load icon: " newIconPath)
+
+    ; call SendMessageW directly:
+	if MainUI_ID
+		for wParam in [0, 1]  ; ICON_SMALL, ICON_BIG
+			DllCall("SendMessageW"
+			, "Ptr", MainUI_ID
+			, "UInt", 0x80      ; WM_SETICON
+			, "Ptr", wParam
+			, "Ptr", hIcon
+			)
+	if MainUI_Warning_ID
+		for wParam in [0, 1]  ; ICON_SMALL, ICON_BIG
+		DllCall("SendMessageW"
+			, "Ptr", MainUI_Warning_ID
+			, "UInt", 0x80      ; WM_SETICON
+			, "Ptr", wParam
+			, "Ptr", hIcon
+		)
+	
+    ; same SetWindowPos to repaint
+	if MainUI_ID
+		DllCall("SetWindowPos"
+		, "Ptr", MainUI_ID
+		, "Ptr", 0
+		, "Int", 0, "Int", 0, "Int", 0, "Int", 0
+		, "UInt", 0x27
+		)
+	if MainUI_Warning_ID
+		DllCall("SetWindowPos"
+		, "Ptr", MainUI_Warning_ID
+		, "Ptr", 0
+		, "Int", 0, "Int", 0, "Int", 0, "Int", 0
+		, "UInt", 0x27
+		)
+
+    return true
+}
+
+; ################################ ;
 ; ####### Theme Functions ######## ;
 ; ################################ ;
+
+CheckDeviceTheme(*) {
+	global currentTheme
+	global MainUI
+	global SettingsUI
+	global WindowSettingsUI
+	global ExtrasUI
+	global ScriptSettingsUI
+	
+	; Check if themes.ini exists
+	if !FileExist(localScriptDir "\themes.ini")
+		return updateGlobalThemeVariables(currentTheme)
+	
+	if MainUI
+		try updateGUITheme(MainUI)
+	if SettingsUI
+		try updateGUITheme(SettingsUI)
+	if WindowSettingsUI
+		try updateGUITheme(WindowSettingsUI)
+	if ExtrasUI
+		try updateGUITheme(ExtrasUI)
+	if ScriptSettingsUI
+		try updateGUITheme(ScriptSettingsUI)
+}
 
 GetDefaultThemes(*) {
 	return Map(
@@ -3048,159 +3302,137 @@ isPixelColorInRadius(x, y, color, radius) {
 }
 
 ; ############################### ;
-; ########### Classes ########### ;
+; ###### Utility Functions ###### ;
 ; ############################### ;
 
-class arr extends Array {
-	GetIndex(value) {
-		for pos, val in this {
-			if (value == val)
-				return pos
-		}
-		return false
-	}
+CooldownEditPopup(*) {
+	
+    global MinutesToWait
+    global SecondsToWait
+    global MainUI
+    global minCooldown
+	global ProfilesDir
+	global SelectedProcessExe
+    local UI_Height := 120
+	local UI_Width := 350
+    local InpBox := InputBox(minCooldown . " - 15 minutes. You can also use formats like `"`1m 30s`"`, `"`10s`"`, or `"`1:30`"`.", "Edit Cooldown", "w" UI_Width " h" UI_Height)
+    
+    if (InpBox.Result = "Cancel")
+        return SecondsToWait
 
-	GetValue(index) {
-		for pos, val in this
-			if (index == pos)
-				return val or true
-		return false
-	}
-}
-
-class math {
-	static huge(*) {
-		return 2^1024 - 1
-	}
-    static clamp(number, minimum := 0, maximum := math.huge()) {
-        return Min(Max(number, minimum), maximum)
+    local inputText := Trim(InpBox.Value)
+    local parsed := {}
+    
+    ; Determine which format the user provided
+    if (InStr(inputText, ":")) {
+        ; Colon-separated format e.g. "1:30"
+        try {
+            parsed := ParseColonFormat(inputText)
+        } catch error as e {
+            MsgBox("Invalid colon format. Please use something like '1:30'.", "Cooldown update error", "T5")
+            return SecondsToWait
+        }
+    } else if (RegExMatch(inputText, "[ms]")) {
+        ; Letter-based format e.g. "1m 30s" or "38s 10m"
+        try {
+            parsed := ParseLetterFormat(inputText)
+        } catch error as e {
+            MsgBox("Invalid time format. Please use a valid format like '1m 30s' or '10s'.", "Cooldown update error", "T5")
+            return SecondsToWait
+        }
+    } else if (IsNumber(inputText)) {
+        ; Pure number is interpreted as minutes
+        parsed := { minutes: inputText+0, seconds: Round((inputText+0) * 60) }
+    } else {
+        MsgBox("Please enter a valid number or time format to update the cooldown!", "Cooldown update error", "T5")
+        return SecondsToWait
     }
-	static round(number, decimalPlaces := 0) {
-			return Round(number, decimalPlaces)
-	}
-	static random(min, max := math.huge()) {
-		return Random(min, max)
-	}
-	static isInteger(value) {
-		return (value is Integer)
-	}
-	static isNumber(value) {
-		return (value is Number)
-	}
-	static isFloat(value) {
-		return (value is Float)
-	}
-	static min(value1, value2) {
-		return Min(value1, value2)
-	}
-	static max(value1, value2) {
-		return Max(value1, value2)
-	}
-	static abs(value) {
-		return Abs(value)
-	}
-	static sqrt(value) {
-		return Sqrt(value)
-	}
-	static sin(value) {
-		return Sin(value)
-	}
-	static cos(value) {
-		return Cos(value)
-	}
-	static tan(value) {
-		return Tan(value)
-	}
-	static asin(value) {
-		return Asin(value)
-	}
-	static acos(value) {
-		return Acos(value)
-	}
-	static atan(value) {
-		return Atan(value)
-	}
-	static log10(value) {
-		return Log(value)
-	}
-	static log(value) {
-		return Ln(value)
-	}
-	static exp(value) {
-		return Exp(value)
-	}
-	static floor(value) {
-		return Floor(value)
-	}
-	static ceil(value) {
-		return Ceil(value)
-	}
-	static sign(value) {
-		return (value > 0) ? 1 : (value < 0) ? -1 : 0
-	}
-	static pi() {
-		return 3.14159265358979323846
-	}
-	static mod(value, divisor) {
-		return Mod(value, divisor)
-	}
-	static pow(base, exponent) {
-		return base ** exponent
-	}
+    
+    ; Clamp the minutes value between minCooldown and 15 minutes
+    parsed.minutes := math.clamp(parsed.minutes, minCooldown, 15)
+    ; Update total seconds accordingly
+    parsed.seconds := Round(parsed.minutes * 60)
+    
+    ; Write the new values to the registry
+    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", parsed.seconds)
+    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", parsed.minutes)
+    MinutesToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", 15, "int")
+    SecondsToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", MinutesToWait * 60, "int")
+    
+    ; Optionally update the UI timer, etc.
+    UpdateTimerLabel()
+    
+    return SecondsToWait
 }
 
-class Color3 {
-	static new(r, g, b) {
-		return Color3.fromRGB(math.clamp(r,,1) * 255, math.clamp(g,,1) * 255, math.clamp(b,,1) * 255)
-	}
+OpenScriptDir(*) {
+	; SetWorkingDir A_InitialWorkingDir
+	Run("explorer.exe " . A_ScriptDir)
+}
 
-	static fromRGB(r, g, b) {
-		return Format("{1:02X}{2:02X}{3:02X}", Round(r), Round(g), Round(b))
-	}
+SelectEditor(*) {
+	Editor := FileSelect(2,, "Select your editor", "Programs (*.exe)")
+	if !Editor
+		return
+	RegWrite Format('"{1}" "%L"', Editor), "REG_SZ", "HKCR\AutoHotkeyScript\Shell\Edit\Command"
+}
 
-	static fromHex(hex) {
-		if IsA(hex, "string") && SubStr(hex, 1, 1) == "#"
-			hex := "0x" . SubStr(hex, 2)
-		hex := Integer(hex)
-		r := (hex >> 16) & 0xFF
-		g := (hex >> 8) & 0xFF
-		b := hex & 0xFF
-		return [r / 255, g / 255, b / 255]
-	}
+CloseApp(*) {
+	; SetTimer(SaveMainUIPosition,0)
+	SaveMainUIPosition()
+	ExitApp
+}
 
-	static toRGB(hex) {
-		if IsA(hex, "string") && SubStr(hex, 1, 1) == "#"
-			hex := "0x" . SubStr(hex, 2)
-		hex := Integer(hex)
-		return [
-			(hex >> 16) & 0xFF,
-			(hex >> 8) & 0xFF,
-			hex & 0xFF
-		]
-	}
+EditApp(*) {
+	Edit
+}
 
-	static toHSV(r, g, b, &h, &s, &v) {
-		r := r / 255, g := g / 255, b := b / 255
-		local maximum := Max(r, g, b), minimum := Min(r, g, b)
-		local delta := maximum - minimum
-		h := 0, s := 0, v := maximum
-	
-		if (delta != 0) {
-			if (maximum == r)
-				h := Mod((g - b) / delta, 6)
-			else if (maximum == g)
-				h := ((b - r) / delta) + 2
-			else
-				h := ((r - g) / delta) + 4
-	
-			h := h / 6 ; Convert from 0–360 → 0–1 range
-			if (h < 0)
-				h += 1
-			s := delta / maximum
-		}
+ReloadScript(*) {
+	SaveMainUIPosition()
+	Reload
+}
 
-		return this.new(h, s, v)
-	}	
+; ################################ ;
+; ########## Animations ########## ;
+; ################################ ;
+
+FadeWindow(hwnd, direction := "in", duration := 300, autoClose := true) {
+    global fadeLock
+
+    if fadeLock {
+        SetTimer(FadeWindow.Bind(hwnd, direction, duration, autoClose), -duration)
+        return
+    }
+
+    fadeLock := true
+
+    steps := 30
+    interval := duration // steps
+
+    Loop steps {
+        t := A_Index / steps
+        eased := easeInOutSine(t)
+        opacity := direction = "in"
+            ? Round(eased * 255)
+            : Round((1 - eased) * 255)
+
+        WinSetTransparent(opacity, hwnd)
+        Sleep interval
+    }
+
+    if direction = "in" {
+        WinSetTransparent(255, hwnd)
+    } else {
+        WinSetTransparent(0, hwnd)
+        if autoClose
+            WinClose(hwnd)
+    }
+
+    fadeLock := false
+}
+
+easeInOutSine(t) {
+    return -(math.cos(math.pi() * t) - 1) / 2
 }
 
 ; ################################ ;
@@ -3509,115 +3741,6 @@ createDefaultSettingsData(*) {
 	loadProfileSettings(selectedExe)
 }
 
-AutoUpdate(*) {
-	global autoUpdateDontAsk
-	if autoUpdateDontAsk
-		return toggleAutoUpdate(false)
-	
-	GetUpdate()
-}
-
-toggleAutoUpdate(doUpdate := false) {
-	if !doUpdate
-		return SetTimer(AutoUpdate, 0)
-
-	GetUpdate()
-	return SetTimer(AutoUpdate, 60000)
-}
-
-DeleteTrayTabs(*) {
-	TabNames := [
-		"&Edit Script",
-		"&Window Spy",
-		"&Pause Script",
-		"&Suspend Hotkeys",
-		"&Help",
-		"&Open"
-	]
-
-	if doDebug
-		return
-
-	if TabNames.Length > 0
-		for _,tab in TabNames
-			A_TrayMenu.Delete(tab)
-}
-
-setTrayIcon(icon := "") {
-	global currentIcon
-	createDefaultDirectories()
-	if FileExist(icon) and icon != currentIcon {
-		TraySetIcon(icon)
-		currentIcon := icon
-		; tell Windows to swap in the new .ico
-		global MainUI
-		global MainUI_Warning
-		if MainUI or MainUI_Warning
-			UpdateGuiIcon(icon)
-	}
-}
-
-UpdateGuiIcon(newIconPath) {
-	global MainUI
-	global MainUI_Warning
-	local MainUI_ID := MainUI and MainUI.Hwnd or ""
-	local MainUI_Warning_ID := MainUI_Warning and MainUI_Warning.Hwnd or ""
-    if !MainUI_ID && !MainUI_Warning_ID
-        throw Error("No user interface found to update icon.")
-	
-    if !FileExist(newIconPath)
-        throw Error("Icon file not found: " newIconPath)
-
-    hIcon := DllCall(
-        "LoadImageW"
-      , "Ptr", 0                     ; hinst
-      , "WStr", newIconPath          ; file
-      , "UInt", 1                    ; IMAGE_ICON
-      , "Int", 0                     ; cx (default)
-      , "Int", 0                     ; cy (default)
-      , "UInt", 0x10                 ; LR_LOADFROMFILE
-      , "Ptr"
-    )
-    if !hIcon
-        throw Error("Failed to load icon: " newIconPath)
-
-    ; call SendMessageW directly:
-	if MainUI_ID
-		for wParam in [0, 1]  ; ICON_SMALL, ICON_BIG
-			DllCall("SendMessageW"
-			, "Ptr", MainUI_ID
-			, "UInt", 0x80      ; WM_SETICON
-			, "Ptr", wParam
-			, "Ptr", hIcon
-			)
-	if MainUI_Warning_ID
-		for wParam in [0, 1]  ; ICON_SMALL, ICON_BIG
-		DllCall("SendMessageW"
-			, "Ptr", MainUI_Warning_ID
-			, "UInt", 0x80      ; WM_SETICON
-			, "Ptr", wParam
-			, "Ptr", hIcon
-		)
-	
-    ; same SetWindowPos to repaint
-	if MainUI_ID
-		DllCall("SetWindowPos"
-		, "Ptr", MainUI_ID
-		, "Ptr", 0
-		, "Int", 0, "Int", 0, "Int", 0, "Int", 0
-		, "UInt", 0x27
-		)
-	if MainUI_Warning_ID
-		DllCall("SetWindowPos"
-		, "Ptr", MainUI_Warning_ID
-		, "Ptr", 0
-		, "Int", 0, "Int", 0, "Int", 0, "Int", 0
-		, "UInt", 0x27
-		)
-
-    return true
-}
-
 createDefaultDirectories(*) {
 	global localScriptDir, Utilities, icons
 	if !DirExist(localScriptDir)
@@ -3638,16 +3761,139 @@ createDefaultDirectories(*) {
 	}
 }
 
-IsAltTabOpen() {
-    return (
-        WinExist("ahk_class MultitaskingViewFrame")
-        || WinExist("ahk_class TaskSwitcherWnd")
-        || WinExist("ahk_class #32771")
-    ) != 0
+; ################################ ;
+; ####### Update Functions ####### ;
+; ################################ ;
+
+IsVersionNewer(localVersion, onlineVersion) {
+	if !localVersion || !onlineVersion
+		return "Failed"
+
+	localParts := StrSplit(localVersion, ".")
+	onlineParts := StrSplit(onlineVersion, ".")
+	
+	; Compare each version segment numerically
+	Loop localParts.Length {
+		localPart := localParts[A_Index]
+		onlinePart := onlineParts && onlineParts.Has(A_Index) ? onlineParts[A_Index] : unset
+		if !onlinePart or !IsSet(onlinePart)
+			return "Failed"
+
+		; Treat missing parts as 0 (e.g., "1.2" vs "1.2.1")
+		localPart := localPart != "" ? localPart : 0
+		onlinePart := onlinePart != "" ? onlinePart : 0
+
+		if (onlinePart > localPart)
+			return "Outdated"
+		else if (onlinePart < localPart)
+			return "Beta"
+	}
+	return "Updated" ; Versions are equal
+}
+
+GetLatestReleaseVersion(JSON := "") {
+    local URL_API := "https://api.github.com/repos/WoahItsJeebus/JACS/releases/latest"
+    local tempJSONFile := JSON or A_Temp "\latest_release.json"
+    
+	if !JSON
+		try {
+			DownloadURL(URL_API, tempJSONFile)  ; Download the JSON response
+		} catch {
+			return ""
+		}
+    
+    local jsonText := FileRead(tempJSONFile)
+    FileDelete(tempJSONFile)  ; Clean up the temporary file
+    
+    local releaseInfo := JSON_parse(jsonText)
+    
+    if (!releaseInfo or !IsObject(releaseInfo)) {
+        return ""
+    }
+    
+    ; Use a try/catch to safely attempt to access tag_name
+    try {
+        local latestTag := releaseInfo.tag_name
+    } catch {
+        latestTag := ""
+    }
+    
+    if (latestTag = "" or !latestTag) {
+        return ""
+    }
+    
+    return latestTag
+}
+
+GetUpdate(*) {
+    global autoUpdateDontAsk
+    global version
+    
+    global URL_SCRIPT
+	global tempUpdateFile
+	global latestVersion := GetLatestReleaseVersion()
+	
+	global localScriptDir
+	local getStatus := IsVersionNewer(version, latestVersion)
+    if getStatus == "Outdated" {
+        if !autoUpdateDontAsk {
+            SendNotification("Get the latest version from GitHub?", Map(
+				"Type", "yesno",
+				"OnYes", (*) => (
+					autoUpdateDontAsk := true
+					Run("https://github.com/WoahItsJeebus/JACS/releases/latest")
+				),
+				"OnNo", (*) => (
+					autoUpdateDontAsk := true
+					SetTimer(AutoUpdate, 0)
+				),
+				"Duration", 15000,
+				"Title", "JACS - Update Available!",
+			))
+        }
+    } else if getStatus == "Updated" {
+		autoUpdateDontAsk := false
+		SetTimer(AutoUpdate, 0)
+	} else if getStatus == "Beta" {
+		autoUpdateDontAsk := true
+		SendNotification("Using JACS beta version " version ". Continuing with onboard script", Map(
+			"Duration", 5000,
+			"Title", "JACS - Update Status",
+		))
+	} else if getStatus == "Failed" {
+		autoUpdateDontAsk := true
+		SendNotification("JACS update check failed. Continuing with onboard script", Map(
+			"Duration", 5000,
+			"Title", "JACS - Update Status",
+		))
+	} else {
+		autoUpdateDontAsk := true
+		SendNotification("JACS update check returned `"Other`"", Map(
+			"Duration", 5000,
+			"Title", "JACS - Update Status",
+		))
+	}
+}
+
+AutoUpdate(*) {
+	global autoUpdateDontAsk
+	if autoUpdateDontAsk
+		return toggleAutoUpdate(false)
+	
+	GetUpdate()
+}
+
+toggleAutoUpdate(doUpdate := false) {
+	if !doUpdate
+		return SetTimer(AutoUpdate, 0)
+
+	GetUpdate()
+	return SetTimer(AutoUpdate, 60000)
 }
 
 ; ################################ ;
-; ####### INI Functions ######### ;
+; ######## INI Functions ######### ;
+; ################################ ;
 
 IniSectionExists(fileOrLines, sectionName) {
     if Type(fileOrLines) = "String" {
@@ -3787,264 +4033,6 @@ getUniqueID() {
 	IDs.Push(pickedID)
 
 	return pickedID
-}
-
-FadeWindow(hwnd, direction := "in", duration := 300, autoClose := true) {
-    global fadeLock
-
-    if fadeLock {
-        SetTimer(FadeWindow.Bind(hwnd, direction, duration, autoClose), -duration)
-        return
-    }
-
-    fadeLock := true
-
-    steps := 30
-    interval := duration // steps
-
-    Loop steps {
-        t := A_Index / steps
-        eased := easeInOutSine(t)
-        opacity := direction = "in"
-            ? Round(eased * 255)
-            : Round((1 - eased) * 255)
-
-        WinSetTransparent(opacity, hwnd)
-        Sleep interval
-    }
-
-    if direction = "in" {
-        WinSetTransparent(255, hwnd)
-    } else {
-        WinSetTransparent(0, hwnd)
-        if autoClose
-            WinClose(hwnd)
-    }
-
-    fadeLock := false
-}
-
-easeInOutSine(t) {
-    return -(math.cos(math.pi() * t) - 1) / 2
-}
-
-SendNotification(message, config := Map(
-	"Type", "info",
-	"OnYes", "", "OnNo", "",
-	"OnOk", "", "OnCancel", "", "OnClose", "",
-	"Duration", 4000,
-	"Title", "JACS - Notification"
-)) {
-	static notificationQueue := Map()				; Pending notifications (unique key → data)
-	static notificationQueueKeys := []				; FIFO list of queued keys
-	static closeFunctions := Map()					; Timers for closing
-	static themeFunctions := Map()					; Timers for theme updates
-	static slotAssignments := Map()					; hwnd → slotIndex
-	static notificationGUIs := []					; Active notification windows
-	static notificationCounter := 0					; Unique counter for queue keys
-	static slotStates := [false, false, false]		; Slot availability (3 slots)
-
-	global isActive
-	global intWindowColor, intControlColor, intProgressBarColor
-	global ControlTextColor, linkColor, HeaderHeight
-	global buttonHeight, buttonFontSize, buttonFontWeight, buttonFont
-
-	local popupWidth := 300, popupHeight := 150
-	local popupMarginX := 10, popupMarginY := 10
-
-	; Skip if already shown in active GUIs 
-	for _, hwnd in notificationGUIs {
-		if hwnd && WinExist(hwnd) {
-			ui := GuiFromHwnd(hwnd)
-			for _, ctrl in ui {
-				if ctrl.Type = "Text" && ctrl.Text == message
-					return
-			}
-		}
-	}
-
-	; Skip if message is already queued 
-	for _, key in notificationQueueKeys {
-		if notificationQueue.Has(key) && notificationQueue[key]["Message"] == message
-			return
-	}
-
-	; If 3 active, queue instead 
-	if notificationGUIs.Length >= 3 {
-		notificationCounter += 1
-		uniqueKey := Format("{}_{}", A_TickCount, notificationCounter)
-		notificationQueue[uniqueKey] := Map("Message", message, "Config", config)
-		notificationQueueKeys.Push(uniqueKey)
-		return
-	}
-
-	; Find free visual slot (0 = none) 
-	local slotIndex := 0
-	for i, used in slotStates {
-		if !used {
-			slotIndex := i
-			break
-		}
-	}
-	if slotIndex = 0 {
-		notificationCounter += 1
-		uniqueKey := Format("{}_{}", A_TickCount, notificationCounter)
-		notificationQueue[uniqueKey] := Map("Message", message, "Config", config)
-		notificationQueueKeys.Push(uniqueKey)
-		return
-	}
-	slotStates[slotIndex] := true
-
-	; Config values 
-	local type     := config.Get("Type", "info")
-	local duration := config.Get("Duration", 4000)
-	local onYes    := config.Get("OnYes", "")
-	local onNo     := config.Get("OnNo", "")
-	local onOk     := config.Get("OnOk", "")
-	local onCancel := config.Get("OnCancel", "")
-	local onClose  := config.Get("OnClose", "")
-	local title    := config.Get("Title", "JACS")
-
-	; Create GUI 
-	MonitorGetWorkArea(1, &monLeft, &monTop, &monRight, &monBottom)
-	screenW := monRight - monLeft
-	screenH := monBottom - monTop
-	local shellX := monRight - popupWidth - 25
-	local shellY := screenH / 2
-	local slotYOffsets := [shellY + screenH * 0.25, shellY, shellY - screenH * 0.25]
-	shellY := slotYOffsets[slotIndex]
-	
-	NotiShellGui := Gui("+AlwaysOnTop -Caption +ToolWindow +LastFound")
-	NotiShellGui.BackColor := getActiveStatusColor()
-	NotiInnerGui := Gui("+Parent" NotiShellGui.Hwnd " -Caption +ToolWindow +LastFound +E0x20")
-	NotiInnerGui.MarginX := popupMarginX
-	NotiInnerGui.MarginY := popupMarginY
-	NotiInnerGui.BackColor := intWindowColor
-	NotiInnerGui.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-
-	id := NotiShellGui.Hwnd
-	notificationGUIs.Push(id)
-	slotAssignments[id] := slotIndex
-
-	NotiInnerGui.OnEvent("Escape", closeNotification)
-	NotiShellGui.OnEvent("Escape", closeNotification)
-
-	innerW := popupWidth - (popupMarginX * 2)
-	titleLabel := NotiInnerGui.Add("Text", "vHeader" getUniqueID() " Center w" innerW - (popupMarginX * 2) " h" HeaderHeight, title)
-	titleLabel.SetFont("s16 c" ControlTextColor " w" buttonFontWeight, "Ink Free")
-
-	messageBox := NotiInnerGui.Add("Text", "vMessageBox Center xm w" innerW - (popupMarginX * 2), message)
-	messageBox.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-	
-	local totalButtons := type = "yesno" ? 2 : 1
-	size := getControlSize(messageBox)
-	local totalObjectsHeight := size.H + (buttonHeight*totalButtons) + HeaderHeight + (NotiShellGui.MarginY*2)
-	local FinalHeight := popupHeight + (totalObjectsHeight - popupHeight) + popupMarginY * 2
-
-	; Add buttons
-	btnY := FinalHeight - buttonHeight - popupMarginY
-	
-	singleW := innerW / 2.5
-	singleX := (innerW - singleW) / 2
-	doubleW := innerW / 3
-	doubleX1 := (innerW - doubleW * 2 - popupMarginX/2) / 2
-	doubleX2 := doubleX1 + doubleW + popupMarginX/2
-
-	if (type = "yesno") {
-		btnYes := NotiInnerGui.Add("Button","vInvisBG_Yes" getUniqueID() Format(" x{} y{} w{} h{}", doubleX1, btnY, doubleW, buttonHeight), "Yes")
-		btnNo  := NotiInnerGui.Add("Button","vInvisBG_No" getUniqueID() Format(" x{} y{} w{} h{}", doubleX2, btnY, doubleW, buttonHeight), "No")
-		btnYes.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-		btnNo.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-		btnYes.Opt("BackgroundTrans")
-		btnNo.Opt("BackgroundTrans")
-
-		btnYes.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onYes) ? onYes.Call() : ""))
-		btnNo.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onNo) ? onNo.Call() : ""))
-	} else if (type = "ok") {
-		btnOk := NotiInnerGui.Add("Button", "vInvisBG_Ok" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "OK")
-		btnOk.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onOk) ? onOk.Call() : ""))
-	} else if (type = "cancel") {
-		btnCancel := NotiInnerGui.Add("Button", "vInvisBG_Cancel" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Cancel")
-		btnCancel.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onCancel) ? onCancel.Call() : ""))
-	} else {
-		btnClose := NotiInnerGui.Add("Button", "vInvisBG_Close" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Close")
-		btnClose.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onClose) ? onClose.Call() : ""))
-	}
-
-	NotiShellGui.Show("NoActivate x" shellX " y" shellY " w" popupWidth " h" FinalHeight)
-	NotiInnerGui.Show("NoActivate w" innerW " h" FinalHeight)
-
-	SetRoundedCorners(id, 16)
-	SetRoundedCorners(NotiInnerGui.Hwnd, 16)
-	ApplyThemeToGui(NotiInnerGui, LoadThemeFromINI(currentTheme))
-	WinSetTransparent(0, id)
-	SetTimer((*) => FadeWindow(id, "in", 500), -1, id)
-	themeFunctions[id] := SetTimer(() => NotiShellGui.BackColor := getActiveStatusColor(), 500, id)
-	closeFunctions[id] := SetTimer(() => closeNotification(id), -duration, id)
-	
-	if IsFunc(onNo)
-		SetTimer(() => onNo.Call(), -duration, id)
-	else if IsFunc(onOk)
-		SetTimer(() => onOk.Call(), -duration, id)
-	else if IsFunc(onCancel)
-		SetTimer(() => onCancel.Call(), -duration, id)
-	else if IsFunc(onClose)
-		SetTimer(() => onClose.Call(), -duration, id)
-	
-	
-	; Close & dequeue logic 
-	closeNotification(hwnd := id) {
-		if !slotAssignments.Has(hwnd)
-			return
-	
-		; Get current slot before removal
-		oldSlot := slotAssignments[hwnd]
-	
-		; Remove from GUI tracking
-		removeFromArray(notificationGUIs, hwnd)
-		closeFunctions.Delete(hwnd)
-		themeFunctions.Delete(hwnd)
-		SetTimer(() => FadeWindow(hwnd, "out", 500), -1, hwnd)
-		slotStates[oldSlot] := false
-
-		; Capture current assignments *before* modifying
-		local currentAssignments := slotAssignments.Clone()
-
-		; Move other notifications visually down if above the removed one
-		; for otherHwnd, thisSlot in currentAssignments {
-		; 	if otherHwnd == hwnd
-		; 		continue
-
-		; 	if thisSlot > oldSlot{
-		; 		; Update tracking
-		; 		slotAssignments[otherHwnd] := thisSlot - 1
-		; 		slotStates[thisSlot] := false
-		; 		slotStates[thisSlot - 1] := true
-
-		; 		; Move window visually
-		; 		MonitorGetWorkArea(1, &left, &top, &right, &bottom)
-		; 		screenH := bottom
-		; 		shellY := screenH / 2
-		; 		slotYOffsets := [shellY + screenH * 0.25, shellY, shellY - screenH * 0.25]
-		; 		newY := slotYOffsets[thisSlot - 1]
-
-		; 		WinGetPos(&x, , &w, &h, hwnd)
-		; 		try WinMove(,, newY,,, hwnd)
-		; 	}
-		; }
-
-
-		; Now safe to remove the closed notification
-		slotAssignments.Delete(hwnd)
-	
-		; Pull next notification from queue if any
-		if notificationQueueKeys.Length > 0 {
-			nextKey := notificationQueueKeys.RemoveAt(1)
-			next := notificationQueue[nextKey]
-			notificationQueue.Delete(nextKey)
-			SendNotification(next["Message"], next["Config"])
-		}
-	}
 }
 
 refreshArray(arr) {
@@ -4794,10 +4782,6 @@ JoinArray(arr, delim := "") {
     }
     return out
 }
-
-; ###################### ;
-; ###### Registry ###### ;
-; ###################### ;
 
 global Keys := Map(
 	"~W", Map(
