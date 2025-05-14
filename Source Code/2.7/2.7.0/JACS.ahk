@@ -602,6 +602,11 @@ runNecessaryTimers(*) {
 			"Interval", refreshRate * 0.225,
 			"Disabled", false
 		),
+		"ProcessWindowWater", Map(
+			"Function", StartProcessWindowWatcher.Bind(),
+			"Interval", 5000,
+			"Disabled", false
+		),
 	)
 	; Run loop functions
 	for FuncName, Data in loopFunctions
@@ -1294,27 +1299,29 @@ CreateClickerSettingsGUI(*) {
 	MouseSpeedLabel := SettingsUI.Add("Text", "Section Center vMouseSpeedLabel h" buttonHeight " w" Popout_Margin_Width, "Mouse Speed: " . math.clamp(MouseSpeed,0,maxSpeed) . " ms")
 	MouseSpeedSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " 0x300 0xC00 AltSubmit vMouseSpeed w" sliderWidth)
 
-	ClickRateOffsetLabel := SettingsUI.Add("Text", "xm" " Section Center vClickRateOffsetLabel h" buttonHeight " w" Popout_Margin_Width, "Click Rate Offset: " . math.clamp(MouseClickRateOffset,0,maxSpeed) . " ms")
+	ClickRateOffsetLabel := SettingsUI.Add("Text", "xm Section Center vClickRateOffsetLabel h" buttonHeight " w" Popout_Margin_Width, "Click Rate Offset: " . math.clamp(MouseClickRateOffset,0,maxSpeed) . " ms")
 	ClickRateSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vClickRateOffset w" sliderWidth)
 
-	ClickRadiusLabel := SettingsUI.Add("Text", "xm" " Section Center vClickRadiusLabel h" buttonHeight " w" Popout_Margin_Width, "Click Radius: " . math.clamp(MouseClickRadius,0,maxSpeed) . " pixels")
+	ClickRadiusLabel := SettingsUI.Add("Text", "xm Section Center vClickRadiusLabel h" buttonHeight " w" Popout_Margin_Width, "Click Radius: " . math.clamp(MouseClickRadius,0,maxSpeed) . " pixels")
 	ClickRadiusSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vClickRadius w" sliderWidth)
 	
-	MouseClicksLabel := SettingsUI.Add("Text", "xm" " Section Center vMouseClicksLabel h" buttonHeight " w" Popout_Margin_Width, "Click Amount: " . math.clamp(MouseClicks,1,maxClicks) . " clicks")
+	MouseClicksLabel := SettingsUI.Add("Text", "xm Section Center vMouseClicksLabel h" buttonHeight " w" Popout_Margin_Width, "Click Amount: " . math.clamp(MouseClicks,1,maxClicks) . " clicks")
 	MouseClicksSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vMouseClicks w" sliderWidth)
 	
-	CooldownLabel := SettingsUI.Add("Text", "xm" " Section Center vCooldownLabel h" buttonHeight " w" Popout_Margin_Width, "Cooldown: " SecondsToWait " seconds")
-	EditCooldownButton := SettingsUI.Add("Button", "x+-" Popout_Margin_Width/3.5 " vCooldownEditor h" buttonHeight " w" Popout_Margin_Width/7, "Custom")
+	CooldownLabel := SettingsUI.Add("Text", "xm Section Center vCooldownLabel h" buttonHeight " w" Popout_Margin_Width, "Cooldown: " SecondsToWait " seconds")
+	EditCooldownButton := SettingsUI.Add("Button", "x" Popout_MarginX " yp vCooldownEditor h" buttonHeight " w" Popout_Margin_Width/5, "Custom")
 	CooldownSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " y+-" sliderOffset . " 0x300 0xC00 AltSubmit vCooldownSlider w" sliderWidth)
 
-	ToggleMouseLock := SettingsUI.Add("Button", "xm" " Section Center vToggleMouseLock h" buttonHeight " w" Popout_Margin_Width/2, "Block Inputs: " . (toggleStatus == "Enabled" ? "On" : "Off"))
-	SendKeyButton := SettingsUI.Add("Button", "x+1 Section Center vSendKey h" buttonHeight " w" Popout_Margin_Width/2, "Send Key: " . (keytoSend == "LButton" ? "Left Click" : "Right Click"))
+	SendKeyLabel := SettingsUI.Add("Text", "xm+" Popout_MarginX/2 " Section Center vSendKeyLabel h" buttonHeight " w" Popout_Margin_Width/2-Popout_MarginX, "Send Key:")
+	SendKeyButton := SettingsUI.Add("Button", "xm+" Popout_MarginX/2 " Section Center vSendKeyButton h" buttonHeight " w" Popout_Margin_Width/2-Popout_MarginX, keytoSend == "LButton" ? "Left Click" : "Right Click")
+	
+	ToggleMouseLock := SettingsUI.Add("Button", "x+m Center vToggleMouseLock h" buttonHeight " w" Popout_Margin_Width/2-Popout_MarginX, "Block Inputs: " . (toggleStatus == "Enabled" ? "On" : "Off"))
 	
 	; Slider Description Box
-	descriptionGroup := SettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" Popout_Margin_Height/1.75 " w" Popout_Margin_Width, "")
-	DescriptionBoxBG := SettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . Popout_Margin_Height/1.75 - (groupPadding*1.5) . " w" Popout_Margin_Width - groupPadding)
-	DescriptionBox := SettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . Popout_Margin_Height/1.75 - (groupPadding*1.5) . " w" Popout_Margin_Width - groupPadding)
-
+	descriptionGroup := SettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" 0 " w" Popout_Margin_Width, "")
+	DescriptionBoxBG := SettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . (0) . " w" Popout_Margin_Width - groupPadding)
+	DescriptionBox := SettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . (0) . " w" Popout_Margin_Width - groupPadding)
+	
 	; Hover Descriptions
 	local Descriptions := Map(
 		; Sliders
@@ -1324,9 +1331,11 @@ CreateClickerSettingsGUI(*) {
 		"ToggleMouseLock", "This button controls if the script blocks user inputs or not during the short auto-click sequence.`n`nIt is recommended to enable this setting if you are actively using your mouse or keyboard when the script is running. This is to prevent accidental mishaps in your gameplay.`n`n(Note: This setting will not impede on your active gameplay session, as your manual inputs will reset the script's auto-click timer!)",
 		"MouseClicks", "Use this slider to control how many clicks are sent when the bar fills to 100%.",
 		"CooldownEditor", "This button controls the duration of the auto-clicker sequence timer.`n`nLength: 0-15 minutes`n`n(Note: Setting the auto-clicker to 0 will constantly click, like typical auto-clickers, however other windows not in the target scope will be ignored and not clicked.)",
-		"CooldownSlider", "Use this slider to fine-tune the cooldown for the auto-clicker. Alternatively you can use the `"Custom Cooldown`" button to set a specific value."
+		"CooldownSlider", "Use this slider to fine-tune the cooldown for the auto-clicker. Alternatively you can use the `"Custom Cooldown`" button to set a specific value.",
+		"SendKeyLabel", "This button controls whether the script sends a left or right click when the auto-clicker fires.`n`nLeft Click: Sends a left click to the target window.`n`nRight Click: Sends a right click to the target window.",
+		"SendKeyButton", "This button controls whether the script sends a left or right click when the auto-clicker fires.`n`nLeft Click: Sends a left click to the target window.`n`nRight Click: Sends a right click to the target window.",
 	)
-
+	
 	MS_Buddy1 :=			SettingsUI.Add("Text", "Center vMS_Buddy1 h" buttonHeight " w" buddyWidth, "Fast")
 	MS_Buddy2 :=			SettingsUI.Add("Text", "Center vMS_Buddy2 h" buttonHeight " w" buddyWidth, "Slow")
 	Rate_Buddy1 := 			SettingsUI.Add("Text", "Center vRate_Buddy1 h" buttonHeight " w" buddyWidth, "Less")
@@ -1348,7 +1357,7 @@ CreateClickerSettingsGUI(*) {
 	MouseClicksBuddy2.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	Cooldown_Buddy1.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	Cooldown_Buddy2.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-
+	
 	MouseSpeedLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	ClickRateOffsetLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	ClickRadiusLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
@@ -1358,7 +1367,8 @@ CreateClickerSettingsGUI(*) {
 	ToggleMouseLock.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	SendKeyButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	DescriptionBox.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-
+	SendKeyLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
+	
 	MS_Buddy1.Opt("Background" intWindowColor " c" ControlTextColor)
 	MS_Buddy2.Opt("Background" intWindowColor " c" ControlTextColor)
 	Rate_Buddy1.Opt("Background" intWindowColor " c" ControlTextColor)
@@ -1369,7 +1379,8 @@ CreateClickerSettingsGUI(*) {
 	MouseClicksBuddy2.Opt("Background" intWindowColor " c" ControlTextColor)
 	Cooldown_Buddy1.Opt("Background" intWindowColor " c" ControlTextColor)
 	Cooldown_Buddy2.Opt("Background" intWindowColor " c" ControlTextColor)
-
+	
+	SendKeyLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 	MouseSpeedLabel.Opt("Background" intWindowColor " c" ControlTextColor)
 	ClickRateOffsetLabel.Opt("Background" intWindowColor " c" ControlTextColor)
 	ClickRadiusLabel.Opt("Background" intWindowColor " c" ControlTextColor)
@@ -1540,8 +1551,8 @@ CreateClickerSettingsGUI(*) {
 		local textWidth := MeasureTextWidth(DescriptionBox, newText)
 		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
 
-		descriptionGroup.Move(,,, textHeight+(groupPadding*2))
-		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2.25))
+		descriptionGroup.Move(,,, textHeight+(groupPadding*2.05))
+		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2.05))
 		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
 		
 		SettingsUI.Show("AutoSize")
@@ -1571,12 +1582,12 @@ CreateClickerSettingsGUI(*) {
 	updateDescriptionBoxValues()
 
 	SettingsUI.OnEvent("Close", CloseSettingsUI)
-
+	
 	; Calculate center position
 	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
-
+	
 	updateDescriptionBox(" ")
 	CheckDeviceTheme()
 	SettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
@@ -1696,9 +1707,9 @@ CreateScriptSettingsGUI(*) {
 		}
 		
 		; Slider Description Box
-		descriptionGroup := ScriptSettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" Popout_Margin_Height/1.75 " w" Popout_Margin_Width, "")
-		DescriptionBoxBG := ScriptSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . Popout_Margin_Height/1.75 - (groupPadding*1.5) . " w" Popout_Margin_Width - groupPadding)
-		DescriptionBox := ScriptSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . Popout_Margin_Height/1.75 - (groupPadding*1.5) . " w" Popout_Margin_Width - groupPadding)
+		descriptionGroup := ScriptSettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" 0 " w" Popout_Margin_Width, "")
+		DescriptionBoxBG := ScriptSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . (0) . " w" Popout_Margin_Width - groupPadding)
+		DescriptionBox := ScriptSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . (0) . " w" Popout_Margin_Width - groupPadding)
 	}
 	
 	evenlySpaceControls()
@@ -1761,8 +1772,8 @@ CreateScriptSettingsGUI(*) {
 		local textWidth := MeasureTextWidth(DescriptionBox, newText)
 		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
 
-		descriptionGroup.Move(,,, textHeight+(groupPadding*2))
-		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2))
+		descriptionGroup.Move(,,, textHeight+(groupPadding*2.1))
+		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2.1))
 		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
 		
 		ScriptSettingsUI.Show("AutoSize")
@@ -1804,10 +1815,12 @@ CreateScriptSettingsGUI(*) {
 CreateExtrasGUI(*) {
 	global ProfilesDir
 
+	global ExtrasUI
 	global warningRequested
 	global MainUI_PosX
 	global MainUI_PosY
-	
+	global AlwaysOnTopActive
+
 	global buttonFontSize, buttonFontWeight, buttonFont, buttonHeight
 	global PixelOffset
 
@@ -1816,53 +1829,64 @@ CreateExtrasGUI(*) {
 	global intControlColor
 	global ControlTextColor
 
+	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
 	local createNewWarningButton := ""
 	local Popout_Width := 300
 	local Popout_Height := 350
 	local Popout_Margin_Height := 0
 	local Popout_Margin_Width := 0
 
+	local Popout_MarginX := 10
+	local Popout_MarginY := 10
+	local groupPadding := 20
+
+	local descriptionGroup := ""
+	local DescriptionBoxBG := ""
+	local DescriptionBox := ""
+
+	global buttonHeight
+	
 	; Create new UI
-	global ExtrasUI
 
 	if ExtrasUI
 		ExtrasUI.Destroy()
 
-	ExtrasUI := Gui(AlwaysOnTopActive " +Owner" . MainUI.Hwnd)
+	ExtrasUI := Gui(AOTStatus)
+	ExtrasUI.Opt("+Owner" . MainUI.Hwnd)
+	ExtrasUI.MarginX := Popout_MarginX
+	ExtrasUI.MarginY := Popout_MarginY
 	ExtrasUI.BackColor := intWindowColor
 	ExtrasUI.Title := "Extras"
 	ExtrasUI.OnEvent("Close", killGUI)
 	ExtrasUI.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
+	
 	Popout_Margin_Width := Popout_Width-(ExtrasUI.MarginX*2)
 	Popout_Margin_Height := Popout_Height-(ExtrasUI.MarginY*2)
-
 	
 	local DiscordLink := ExtrasUI.Add("Button", "vDiscordLink Center h" . buttonHeight . " w" . Popout_Margin_Width, 'Join the Discord!')
 	local GitHubLink := ExtrasUI.Add("Button", "vGithubLink Center h" . buttonHeight . " w" . Popout_Margin_Width, "GitHub Repository")
 	local OpenWarningLabel := ExtrasUI.Add("Button", "vOpenWarning Center h" . buttonHeight . " w" . Popout_Margin_Width, "View Warning Agreement")
 	local ViewPatchnotes := ExtrasUI.Add("Button", "vViewPatchnotes Center h" . buttonHeight . " w" . Popout_Margin_Width, "Patchnotes")
 	
-	; Calculate center position
+	evenlySpaceControls()
+
 	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)	
-	ExtrasUI.Show("Hide AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
-
-	local remainingHeight := evenlySpaceControls(ExtrasUI)
-	local DescriptionBox := ExtrasUI.Add("Text","xm h" remainingHeight " w" Popout_Margin_Width " xm Section Left vDescriptionBox")
-
 	
 	DiscordLink.Opt("Background" intWindowColor)
 	GitHubLink.Opt("Background" intWindowColor)
 	OpenWarningLabel.Opt("Background" intWindowColor)
 	ViewPatchnotes.Opt("Background" intWindowColor)
-	DescriptionBox.Opt("+Border Background" intWindowColor . " c" ControlTextColor)
+	descriptionGroup.Opt("Background" intWindowColor . " c" ControlTextColor)
+	DescriptionBoxBG.Opt("Background" intWindowColor . " c" ControlTextColor)
+	DescriptionBox.Opt("Background" intWindowColor . " c" ControlTextColor)
 	
+	DescriptionBox.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	DiscordLink.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
 	GitHubLink.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
 	OpenWarningLabel.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
 	ViewPatchnotes.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
-	DescriptionBox.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
 
 	DiscordLink.OnEvent("Click", (*) => Run("https://discord.gg/w8QdNsYmbr"))
 	GitHubLink.OnEvent("Click", (*) => Run("https://github.com/WoahItsJeebus/JACS/"))
@@ -1876,11 +1900,44 @@ CreateExtrasGUI(*) {
 		"OpenWarning","View the warning popup seen when running the script for the first time (or if denying the agreement/closing without accepting)",
 		"ViewPatchnotes","Fetch the patchnotes for the latest version of the script posted to Github!",
 	)
+
+	evenlySpaceControls() {
+		local buttonCount := 0
+		local remainingHeight := 0
+
+		for i, control in ExtrasUI {
+			if control.Name != "Section" {
+				buttonCount++
+				local totalHeight := buttonHeight * buttonCount + (ExtrasUI.MarginY * (buttonCount - 1)) + PixelOffset * 2
+				remainingHeight := Popout_Margin_Height - totalHeight + (ExtrasUI.MarginY * 2)
+
+				control.Y := (remainingHeight / 2) + (buttonHeight * (i - 1)) + ExtrasUI.MarginY * i + PixelOffset
+			}
+		}
+		
+		; Slider Description Box
+		descriptionGroup := ExtrasUI.Add("GroupBox","xm Section vDescriptionGroupBox h" 0 " w" Popout_Margin_Width, "")
+		DescriptionBoxBG := ExtrasUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . (0) . " w" Popout_Margin_Width - groupPadding)
+		DescriptionBox := ExtrasUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . (0) . " w" Popout_Margin_Width - groupPadding)
+	}
 	
 	updateDescriptionBox(newText := "") {
-		DescriptionBox.Text := newText
-	}
+		if newText == DescriptionBox.Text
+			return
 
+		ControlGetPos(&groupX, &groupY, &groupW, &groupH, descriptionGroup)
+		DescriptionBox.Text := newText
+
+		local textWidth := MeasureTextWidth(DescriptionBox, newText)
+		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
+
+		descriptionGroup.Move(,,, textHeight+(groupPadding*2.1))
+		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2.1))
+		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
+		
+		ExtrasUI.Show("AutoSize")
+	}
+	updateDescriptionBox(" ")
 	mouseHoverDescription(*)
 	{
 		if not ExtrasUI or not DescriptionBox
@@ -1901,8 +1958,6 @@ CreateExtrasGUI(*) {
 		}
 	}
 
-	ExtrasUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
-
 	SetTimer(mouseHoverDescription,50)
 
 	; Calculate center position
@@ -1910,8 +1965,8 @@ CreateExtrasGUI(*) {
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
+	CheckDeviceTheme()
 	ExtrasUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . " h" . Popout_Height)
-	updateGUITheme(ExtrasUI)
 
 	killGUI(*) {
 		if ExtrasUI
@@ -2465,8 +2520,7 @@ StartProcessWindowWatcher(exeName := SelectedProcessExe, interval := 5000) {
 		}
 	}
 
-	updateList() ; Initial call
-	SetTimer(updateList, interval)
+	updateList()
 	watcherTimers[exeName] := true
 }
 
@@ -2899,6 +2953,10 @@ ApplyThemeToGui(guiObj, themeMap) {
 				case "Link":
 					fg := themeMap["LinkColor"]
 					opt := "c" fg
+				case "Slider":
+					fg := themeMap["TextColor"]
+					bg := "Trans"
+					opt := "Background" bg " Smooth c" fg
 				default:
 					continue ; Skip unsupported or unknown control types
 			}
