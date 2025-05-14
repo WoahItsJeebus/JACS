@@ -174,11 +174,12 @@ global MouseClickRateOffset := readIniProfileSetting(ProfilesDir, SelectedProces
 global MouseClickRadius := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseClickRadius", 0, "int")
 global doMouseLock := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "doMouseLock", false, "bool")
 global MouseClicks := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseClicks", 5, "int")
+global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
+global Global_Keybinds := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "Global_Keybinds", false, "bool")
 
 ; Extras Menu
-global ShowingExtrasUI := false 
+global ShowingExtrasUI := false
 global warningRequested := false
-
 
 global fadeLock := false
 global updateTheme := true
@@ -198,15 +199,8 @@ global LastActiveWindow := false
 global AcceptedWarning := readIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", false, "bool") and CreateGui() or createWarningUI()
 global tempUpdateFile := ""
 
-; ================= Screen Info =================== ;
+; =============== Screen Info ================ ;
 global refreshRate := GetRefreshRate_Alt() or 60
-
-global Credits_CurrentColor := GetRandomColor(200, 255)
-global Credits_TargetColor := GetRandomColor(200, 255)
-global Credits_ColorChangeRate := 5 ; (higher = faster)
-
-; Keys
-global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
 
 toggleAutoUpdate(true)
 OnExit(EndScriptProcess)
@@ -216,7 +210,9 @@ DeleteTrayTabs()
 A_TrayMenu.Insert("&Reload Script", "Fix GUI", MenuHandler)  ; Creates a new menu item.
 SetTimer(RollThankYou, 30000, 100)
 
-; ================================================= ;
+; ============================================= ;
+; ============= Primary Functions ============= ;
+; ============================================= ;
 
 createWarningUI(requested := false) {
 	global ExtrasUI
@@ -448,11 +444,6 @@ runNecessaryTimers(*) {
 		"ClampMainUIPosition", Map(
 			"Function", ClampMainUIPos.Bind(),
 			"Interval", 1000,
-			"Disabled", true
-		),
-		"ColorizeCredits", Map(
-			"Function", ColorizeCredits.Bind(CreditsLink),
-			"Interval", 50,
 			"Disabled", true
 		),
 		"ScrollTip", Map(
@@ -4016,14 +4007,6 @@ RollThankYou(*) {
 	SetTimer(doNotif, -1)
 }
 
-getMapLength(map) {
-	local length := 0
-	for key, value in map {
-		length++
-	}
-	return length
-}
-
 getUniqueID() {
 	static IDs := arr()
 	local pickedID := math.random(1, 1000000)
@@ -4033,16 +4016,6 @@ getUniqueID() {
 	IDs.Push(pickedID)
 
 	return pickedID
-}
-
-refreshArray(arr) {
-	local newArr := []
-	for _, item in arr {
-		if item != "" {
-			newArr.Push(item)
-		}
-	}
-	return newArr
 }
 
 getActiveStatusColor() {
@@ -4248,32 +4221,26 @@ GetRefreshRate_Alt() {
     return RF
 }
 
-ColorizeCredits(creditsLinkCtrl) { 
-    if not creditsLinkCtrl
-        return
+; ################################# ;
+; ##### Map & Array Functions ##### ;
+; ################################# ;
 
-    global Credits_CurrentColor
-    global Credits_TargetColor
-    global Credits_ColorChangeRate
+getMapLength(map) {
+	local length := 0
+	for key, value in map {
+		length++
+	}
+	return length
+}
 
-    ; Store old color before interpolation to prevent unnecessary updates
-    local oldColor := Credits_CurrentColor.Clone()
-
-    ; Interpolate each RGB channel
-    Credits_CurrentColor.R := Lerp(Credits_CurrentColor.R, Credits_TargetColor.R, Credits_ColorChangeRate)
-    Credits_CurrentColor.G := Lerp(Credits_CurrentColor.G, Credits_TargetColor.G, Credits_ColorChangeRate)
-    Credits_CurrentColor.B := Lerp(Credits_CurrentColor.B, Credits_TargetColor.B, Credits_ColorChangeRate)
-
-    ; Only update if color changed significantly
-    if (Round(oldColor.R) != Round(Credits_CurrentColor.R) || Round(oldColor.G) != Round(Credits_CurrentColor.G) || Round(oldColor.B) != Round(Credits_CurrentColor.B)) {
-        newColor := Format("c{:02}{:02}{:02}", Round(Credits_CurrentColor.R), Round(Credits_CurrentColor.G), Round(Credits_CurrentColor.B))
-        creditsLinkCtrl.Opt(newColor) ; Correct AHK v2 way to update the control
-    }
-
-    ; Check if transition is complete, then set a new target color
-    if (Round(Credits_CurrentColor.R) = Credits_TargetColor.R && Round(Credits_CurrentColor.G) = Credits_TargetColor.G && Round(Credits_CurrentColor.B) = Credits_TargetColor.B) {
-        Credits_TargetColor := {R: Random(10, 99), G: Random(10, 99), B: Random(10, 99)}
-    }
+refreshArray(arr) {
+	local newArr := []
+	for _, item in arr {
+		if item != "" {
+			newArr.Push(item)
+		}
+	}
+	return newArr
 }
 
 removeFromArray(array, item) {
@@ -4293,6 +4260,7 @@ ArrayHasValue(arr, target) {
 	}
 	return false
 }
+
 ArrayHasKey := (array, value) => ArrayHasValue(array, value)
 
 ; Evaluate expressions in concatenated strings
