@@ -99,7 +99,8 @@ global MinutesToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "
 global SecondsToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", MinutesToWait * 60, "int")
 global minCooldown := 0
 global lastUpdateTime := A_TickCount
-global CurrentElapsedTime := 0
+global lastUpdateTimes := Map()
+
 global playSounds := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SoundMode", 1, "int")
 global isInStartFolder := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "IsInStartFolder", false, "bool")
 
@@ -131,7 +132,7 @@ global isUIHidden := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isU
 global MainUI_Disabled := false
 
 global UI_Width := "400"
-global UI_Height := "300"
+global UI_Height := "350"
 
 ; Caches
 global tips := []  ; Will be populated from tips.ahk or defaults if it fails
@@ -162,6 +163,8 @@ global EditorButton := ""
 global ScriptDirButton := ""
 global AddToBootupFolderButton := ""
 global AlwaysOnTopButton := ""
+global ID_SelectorLabel := ""
+global ID_Selector := ""
 global AlwaysOnTopActive := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "AlwaysOnTop", false, "bool")
 
 ; Extra Menus
@@ -380,6 +383,9 @@ CreateGui(*) {
 	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
 
+	local MarginX := 10
+	local MarginY := 10
+
 	; Destroy old UI object
 	if MainUI {
 		MainUI.Destroy()
@@ -396,11 +402,13 @@ CreateGui(*) {
 	MainUI.BackColor := MainUI_BG
 	MainUI.OnEvent("Close", CloseApp)
 	MainUI.Title := "Jeebus' Auto-Clicker"
-	MainUI.SetFont()
+	MainUI.MarginX := MarginX
+	MainUI.MarginY := MarginY
 	
+	StartProcessWindowWatcher()
 	createMainButtons()
 	createSideBar()
-    UpdateTimerLabel()
+    ; UpdateTimerLabel()
 	addTipBox()
 	
 	updateUIVisibility()
@@ -412,7 +420,6 @@ CreateGui(*) {
 		Loop 2
 			SoundBeep(300, 200)
 	
-	StartProcessWindowWatcher()
 	runNecessaryTimers()
 	
 	CheckDeviceTheme()
@@ -504,53 +511,42 @@ addTipBox(*) {
 createMainButtons(*) {
 	global MainUI, intWindowColor, intControlColor, ControlTextColor, linkColor, ProfilesDir
 	global UI_Width, UI_Height, ICON_WIDTH, ICON_SPACING, BUTTON_HEIGHT, HeaderHeight, tipHeight
+	global buttonFontSize, buttonFontWeight, buttonFont, buttonHeight
+	global SelectedProcessExe, ProcessWindowCache
+	
 	local UI_Margin_Width := UI_Width-MainUI.MarginX
 	local UI_Margin_Height := UI_Height-MainUI.MarginY
-
-	global buttonFontSize, buttonFontWeight, buttonFont
-	local buttonHeight := 23
 
 	local Header := MainUI.Add("Text","x" ICON_WIDTH " y+" tipHeight+MainUI.MarginY " Section Center vMainHeader cff4840 h" math.clamp(HeaderHeight, 30, math.huge()) " w" UI_Width,"Jeebus' Auto-Clicker — V" version)
 
 	; ########################
 	; 		  Buttons
 	; ########################
-	; local activeText_Core := isActive and "Enabled" or "Disabled"
+
 	global activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
 	global CoreToggleButton := MainUI.Add("Button", "xs+" ICON_WIDTH + UI_Width/6 " h30 w" (UI_Margin_Width*0.75)-ICON_WIDTH, "Auto-Clicker: " activeText_Core)
 	CoreToggleButton.OnEvent("Click", ToggleCore)
-	; CoreToggleButton.Move(UI_Width-((UI_Margin_Width * 0.6) + ICON_WIDTH))
 
-	; ##############################
-	
-	; Calculate initial control width based on GUI width and margins
-	InitialWidth := UI_Width - (2 * UI_Margin_Width)
-	;X := 0, Y := 0, UI_Width := 0, UI_Height := 0
-	
-	; Get the client area dimensions
-	NewButtonWidth := (UI_Width - (2 * UI_Margin_Width)) / 3
-	
-	local pixelSpacing := 5
-
-	; ###############################
-	
 	; Reset Cooldown
 	global ResetCooldownButton := MainUI.Add("Button", "x" (ICON_WIDTH*2) + UI_Margin_Width*0.375 " h30 w" UI_Margin_Width/4, "Reset")
 	ResetCooldownButton.OnEvent("Click", ResetCooldown)
 
-	SeparationLine := MainUI.Add("Text", "x" ICON_WIDTH*2 " 0x7 h1 w" UI_Margin_Width) ; Separation Space
+	SeparationLine := MainUI.Add("Text", "Section x" ICON_WIDTH*2 " 0x7 h1 w" UI_Margin_Width) ; Separation Space
 	SeparationLine.BackColor := "0x8"
 	
 	; Progress Bar
-	global WaitTimerLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " Center 0x300 0xC00 h20 w" UI_Margin_Width, "0%")
-	global WaitProgress := MainUI.Add("Progress", "x" ICON_WIDTH*2 " Center h40 w" UI_Margin_Width)
-	global ElapsedTimeLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " Center 0x300 0xC00 h20 w" UI_Margin_Width, "00:00 / 0 min")
+	local allProcessKeys := ProcessWindowCache[SelectedProcessExe]
+	global ID_SelectorLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " y+0 Center vID_SelectorLabel h" buttonHeight " w" UI_Margin_Width, SelectedProcessExe)
+	global ID_Selector := MainUI.Add("DropDownList", "x" ICON_WIDTH*2 " y+0 Center vID_Selector R10 h" buttonHeight " w" UI_Margin_Width " Choose1", allProcessKeys)
+	global WaitTimerLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " vWaitTimerLabel Center 0x300 0xC00 h20 w" UI_Margin_Width, "0%")
+	global WaitProgress := MainUI.Add("Progress", "x" ICON_WIDTH*2 " vWaitProgress Center h40 w" UI_Margin_Width)
+	global ElapsedTimeLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " vElapsedTimeLabel Center 0x300 0xC00 h20 w" UI_Margin_Width, "00:00 / 0 min")
 	
-
 	; Credits
-	global CreditsLink := MainUI.Add("Link","c" linkColor . " Left h20 w" UI_Margin_Width, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
+	global CreditsLink := MainUI.Add("Link","c" linkColor . " Left h" buttonHeight " w" UI_Margin_Width, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
 	; Move credits link to bottom of UI_Height
-	CreditsLink.Move(ICON_WIDTH*2, UI_Height + (MainUI.MarginY - HeaderHeight - (tipHeight*1.5)))
+	local creditsY := UI_Height + (MainUI.MarginY - HeaderHeight - (tipHeight*1.5))
+	CreditsLink.Move(ICON_WIDTH*2, UI_Margin_Height - buttonHeight - MainUI.MarginY)
 	LinkUseDefaultColor(CreditsLink)
 
 	CoreToggleButton.Opt("Background" intWindowColor)
@@ -559,6 +555,8 @@ createMainButtons(*) {
 	ElapsedTimeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 	WaitProgress.Opt("Background" intProgressBarColor)
 	CreditsLink.Opt("c" linkColor)
+	ID_Selector.Opt("Background" intWindowColor . " c" ControlTextColor)
+	ID_SelectorLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 
 	Header.SetFont("s18 w600", "Ink Free")
 	CoreToggleButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
@@ -566,12 +564,10 @@ createMainButtons(*) {
 	ElapsedTimeLabel.SetFont("s" buttonFontSize*1.15 " w" buttonFontWeight, buttonFont)
 	WaitTimerLabel.SetFont("s" buttonFontSize*1.15 " w" buttonFontWeight, buttonFont)
 	CreditsLink.SetFont("s" buttonFontSize*1.15 " w" buttonFontWeight, buttonFont)
+	ID_Selector.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
+	ID_SelectorLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 
-	; Version
-	; OpenExtrasLabel := MainUI.Add("Button", "x+120 Section Center 0x300 0xC00 h30 w" UI_Margin_Width/4, "Extras")
-	; OpenExtrasLabel.SetFont("s12 w500", "Consolas")
-	; OpenExtrasLabel.Opt("Background" intWindowColor)
-	; OpenExtrasLabel.OnEvent("Click", CreateExtrasGUI)
+	ID_Selector.OnEvent("Change", (*) => UpdateTimerLabel)
 }
 
 createSideBar(*) {
@@ -1724,14 +1720,27 @@ UpdateTimerLabel(*) {
 	global isActive
 	global MinutesToWait
 	global SecondsToWait
+	global lastUpdateTimes
+
 	global ElapsedTimeLabel
-	global CurrentElapsedTime
-	global lastUpdateTime := isActive > 1 and lastUpdateTime or A_TickCount
 	global WaitProgress
 	global WaitTimerLabel
+	global ID_Selector
+	global SelectedProcessExe, ProcessWindowCache
+
+	local IDs := ProcessWindowCache[SelectedProcessExe]
+	local ID := (ID_Selector and ID_Selector.Text != "") ? Number(ID_Selector.Text) : IDs[1]
+	if !lastUpdateTimes.Has(ID)
+		lastUpdateTimes[ID] := A_TickCount
+	else
+		lastUpdateTimes[ID] := isActive > 1 and lastUpdateTimes[ID] or A_TickCount
+	
+	global ID_SelectorLabel
+	if ID_SelectorLabel and ID_SelectorLabel.Text != SelectedProcessExe
+		ID_SelectorLabel.Text := SelectedProcessExe
 
 	; Calculate and update progress bar
-    secondsPassed := (A_TickCount - lastUpdateTime) / 1000  ; Convert ms to seconds
+    secondsPassed := (A_TickCount - lastUpdateTimes[ID]) / 1000  ; Convert ms to seconds
     finalProgress := Round((MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100, 0)
 	
 	; Calculate and format CurrentElapsedTime as MM:SS
@@ -1740,18 +1749,18 @@ UpdateTimerLabel(*) {
 	
 	targetSeconds := (SecondsToWait > 0) and Round(Mod(SecondsToWait, 60),0) or 0
 	
-	CurrentElapsedTime := Format("{:02}:{:02}", currentMinutes, currentSeconds)
-	targetFormattedTime := Format("{:02}:{:02}", MinutesToWait, targetSeconds)
+	local CurrentElapsedTime := Format("{:02}:{:02}", currentMinutes, currentSeconds)
+	local targetFormattedTime := Format("{:02}:{:02}", MinutesToWait, targetSeconds)
 
 	local mins_suffix := SecondsToWait > 60 and " minutes" or SecondsToWait == 60 and " minute" or SecondsToWait < 60 and " seconds"
 	
-	try if ElapsedTimeLabel.Text != CurrentElapsedTime " / " . targetFormattedTime . " " mins_suffix
+	try if ElapsedTimeLabel and ElapsedTimeLabel.Text != CurrentElapsedTime " / " . targetFormattedTime . " " mins_suffix
 			ElapsedTimeLabel.Text := CurrentElapsedTime " / " . targetFormattedTime . " " mins_suffix
 
 	if WaitProgress and WaitProgress.Value != finalProgress
 		WaitProgress.Value := finalProgress
 
-    local finalText  := Round(WaitProgress.Value, 0) "%"
+    local finalText  := Round((WaitProgress and WaitProgress.Value or 0), 0) "%"
 	if WaitTimerLabel and WaitTimerLabel.Text != finalText
 		WaitTimerLabel.Text := finalText
 }
@@ -1762,11 +1771,11 @@ ResetCooldown(*) {
 	global WaitProgress
 	global WaitTimerLabel
 	global activeText_Core
-	global lastUpdateTime := A_TickCount
-
+	global lastUpdateTimes
+	
 	activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
 
-	if CoreToggleButton.Text != "Auto-Clicker: " activeText_Core
+	if CoreToggleButton and CoreToggleButton.Text != "Auto-Clicker: " activeText_Core
 		CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
 
 	if isActive == 2 and FindTargetHWND()
@@ -1780,7 +1789,7 @@ ResetCooldown(*) {
 	if isActive <= 2 or (WaitProgress and WaitProgress.Value != 0 and (MinutesToWait > 0 or SecondsToWait > 0))
 		WaitProgress.Value := 0
     
-	local finalText  := Round(WaitProgress.Value, 0) "%"
+	local finalText  := Round((WaitProgress and WaitProgress.Value or 0), 0) "%"
 	if WaitTimerLabel and WaitTimerLabel.Text != finalText
 		WaitTimerLabel.Text := finalText
 }
@@ -1792,6 +1801,10 @@ switchActiveState(*) {
 		newMode := 1
 	return newMode
 }
+
+; ############################### ;
+; ######## Core Function ######## ;
+; ############################### ;
 
 ToggleCore(optionalControl?, forceState?, *) {
 	; Variables
@@ -1822,29 +1835,11 @@ ToggleCore(optionalControl?, forceState?, *) {
 		CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
 
 	setTrayIcon(icons[isActive].Icon)
-	; CreateGui()
-
-	; Reset cooldown
 	ResetCooldown()
-	
 	UpdateTimerLabel()
-	; Toggle Timer
-	if isActive > 1 {
-		FirstRun := True
-		return SetTimer(RunCore, 100)
-	}
-	else if isActive == 1 {
-		return SetTimer(RunCore, 0)
-	}
-
-	; isActive := 1
-	ResetCooldown()
-	SetTimer(RunCore, 0)
-	return
 }
 
-RunCore(*) {
-	global FirstRun
+RunCore(ID := SelectedProcessExe, FirstRun := false) {
 	global MainUI
 	global UI_Width
 	global UI_Height
@@ -1864,22 +1859,17 @@ RunCore(*) {
 
 	global LastActiveWindow
 	global doMouseLock
-
+	global lastUpdateTimes
 	; Check for process
 	if !FindTargetHWND()
 		ResetCooldown()
 	; 	ToggleCore(, 2)
 	
 	; Check if the toggle has been switched off
-	if isActive == 1 
+	if isActive == 1
 		return
 
-	if (FirstRun or WaitProgress.Value >= 100) and FindTargetHWND()
-	{
-		; Kill FirstRun for automation
-		if FirstRun
-			FirstRun := False
-
+	if (FirstRun or (WaitProgress and WaitProgress.Value >= 100)) and (ID or FindTargetHWND()) {
 		ResetCooldown()
 		
 		if IsAltTabOpen() or (SecondsToWait < 10 and ProcessWindowCache[SelectedProcessExe] and !ProcessWindowCache[SelectedProcessExe].Has(WinActive("A")))
@@ -1907,11 +1897,10 @@ RunCore(*) {
 			BlockInput("MouseMove")
 		}
 
-		;---------------
-		; Find and activate processe
-		local target := FindTargetHWND()
+		; Find and activate process(es)
+		local target := ID or FindTargetHWND()
 		if target
-			ClickWindow()
+			ClickWindow(target)
 		
 		; Activate previous application window & reposition mouse
 		local lastActiveWindowID := ""
@@ -1925,10 +1914,11 @@ RunCore(*) {
 		if doMouseLock
 			Sleep(25)
 
-		if (MinutesToWait > 0 or SecondsToWait > 0)
+		if (MinutesToWait > 0 or SecondsToWait > 0) and WaitProgress
 			WaitProgress.Value := 0
 
-		lastUpdateTime := A_TickCount
+		lastUpdateTimes.Set(ID, A_TickCount)
+		; lastUpdateTime := A_TickCount
 	}
 	
 	; Unblock Inputs
@@ -1936,9 +1926,6 @@ RunCore(*) {
 	BlockInput("Default")
 	BlockInput("MouseMoveOff")
 
-	; Calculate and progress visuals
-    ; secondsPassed := (A_TickCount - lastUpdateTime) / 1000  ; Convert ms to seconds
-    ; finalProgress := (MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100
 	UpdateTimerLabel()
 }
 
@@ -2636,8 +2623,11 @@ FindTargetHWND(*) {
 
 StartProcessWindowWatcher(exeName := "") {
 	static watcherTimers := Map()
+	static ProcessCoreTimers := Map()
+
 	global SelectedProcessExe
 	global ProcessWindowCache
+	global isActive
 
 	if !exeName or exeName == ""
 		exeName := SelectedProcessExe
@@ -2679,11 +2669,38 @@ StartProcessWindowWatcher(exeName := "") {
 
 	updateList()
 
+	for exeName, hwnds in ProcessWindowCache {
+		if !ProcessWindowCache.Has(exeName)
+			ProcessWindowCache[exeName] := []
+
+		if isActive > 1 {
+			for _, ID in ProcessWindowCache[SelectedProcessExe] {
+				if ProcessCoreTimers.Has(ID) {
+					continue
+				}
+				else {
+					RunCore(ID, true)
+					ProcessCoreTimers.Set(ID, SetTimer(
+						RunCore.Bind(ID, false),
+						100,
+						ID
+					))
+				}
+			}
+		}
+		else if isActive == 1 {
+			for _, ID in ProcessWindowCache[SelectedProcessExe] {
+				if ProcessCoreTimers.Has(ID)
+					ProcessCoreTimers.Delete(ID)
+			}
+		}
+	}
+
 	if ProcessWindowCache.Has(exeName) && !watcherTimers[exeName]
-			watcherTimers[exeName] := true
+		watcherTimers[exeName] := true
 }
 
-ClickWindow() {
+ClickWindow(optionalHWND := "") {
 	global SelectedProcessExe, LastActiveWindow := false
 	global MouseSpeed, MouseClickRateOffset, MouseClickRadius, MouseClicks
 	global KeyToSend, MinutesToWait, SecondsToWait
@@ -2733,6 +2750,9 @@ ClickWindow() {
 	}
 
 	; Loop through all windows of selected exe
+	if optionalHWND
+		return doClick(optionalHWND, MouseClicks || 5)
+	
 	if IsA(allWindows, "array") {
 		if allWindows.Length > 1 {
 			for ID in allWindows {
@@ -4253,6 +4273,18 @@ GetRefreshRate_Alt() {
 ; ################################# ;
 ; ##### Map & Array Functions ##### ;
 ; ################################# ;
+
+getAllKeys(mapObj) {
+	local keys := []
+	if !mapObj or !IsA(mapObj,"Map")
+		return MsgBox("Invalid Map object.")
+
+	for key, value in mapObj {
+		keys.Push(key)
+	}
+
+	return keys
+}
 
 getMapLength(map) {
 	local length := 0
