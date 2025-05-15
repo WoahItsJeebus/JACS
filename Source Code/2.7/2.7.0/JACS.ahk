@@ -627,14 +627,13 @@ CheckOpenMenus(*) {
 
 CreateWindowSettingsGUI(*) {
 	; UI Settings
+	global buttonFontSize, buttonFontWeight, buttonFont, buttonHeight
 	local PixelOffset := 10
 	local Popout_Width := 320
 	local Popout_Height := 400
 	local labelOffset := 50
 	local sliderOffset := 2.5
 	
-	global buttonFontSize, buttonFontWeight, buttonFont
-	local buttonHeight := 23
 
 	; Global Save Data
 	global WindowSettingsUI
@@ -1483,7 +1482,7 @@ CreateScriptSettingsGUI(*) {
 CreateExtrasGUI(*) {
 	global ProfilesDir
 
-	global ExtrasUI
+	global ExtrasUI, PatchUI
 	global warningRequested
 	global MainUI_PosX
 	global MainUI_PosY
@@ -1610,6 +1609,10 @@ CreateExtrasGUI(*) {
 	{
 		if not ExtrasUI or not DescriptionBox
 			return SetTimer(mouseHoverDescription,0)
+
+		global PatchUI
+		if PatchUI
+			return
 
 		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
 		local targetControl := ""
@@ -1944,19 +1947,31 @@ RunCore(*) {
 ; ############################### ;
 
 class arr extends Array {
-	GetIndex(value) {
+	; Constructor
+	arr() {
+		this := []
+	}
+
+	GetIndex(AtValue) {
 		for pos, val in this {
-			if (value == val)
+			if (AtValue == val)
 				return pos
 		}
 		return false
 	}
 
-	GetValue(index) {
+	GetValue(AtIndex) {
 		for pos, val in this
-			if (index == pos)
+			if (AtIndex == pos)
 				return val or true
 		return false
+	}
+
+	removeAll() {
+		for pos, val in this
+			this.RemoveAt(pos)
+		
+		return this
 	}
 }
 
@@ -2287,6 +2302,19 @@ CheckSidebarHover() {
 ; ################################ ;
 ; ####### Window Functions ####### ;
 ; ################################ ;
+
+WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
+    global MainUI, MainUI_PosX, MainUI_PosY
+	global SelectedProcessExe, ProfilesDir, localScriptDir
+    if (wParam = 0xF020) { ; 0xF020 (SC_MINIMIZE) indicates the user is minimizing the window.
+        ; Save the current (restored) position before the minimize animation starts.
+        pos := WinGetMinMax(MainUI.Title) != -1 and WinGetPos(&X := MainUI_PosX,&Y := MainUI_PosY,,,MainUI.Title)
+		pos := {X: X, Y: Y}
+
+		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", A_ScreenWidth / 2, "int")
+		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", A_ScreenHeight / 2, "int")
+    }
+}
 
 SendNotification(message, config := Map(
 	"Type", "info",
@@ -2971,6 +2999,159 @@ UpdateGuiIcon(newIconPath) {
 ; ####### Theme Functions ######## ;
 ; ################################ ;
 
+ApplyThemeToGui(guiObj, themeMap) {
+	if !guiObj or !themeMap
+		return
+
+	IsTransparent(val) {
+		static transparentSet := Map("0", 1, "none", 1, "n/a", 1, "transparent", 1, "zero", 1, "clear", 1)
+		return transparentSet.Has(val) ? true : false
+	}
+
+	; Prevent full-black backgrounds which can create Z-index rendering issues
+	if themeMap.Has("Background") and (themeMap["Background"] = "000000" or themeMap["Background"] = "0x000000")
+		themeMap["Background"] := "0a0a0a"
+	
+	for _, ctrl in guiObj {
+		; Skip invalid controls
+		if !ctrl || !ctrl.HasProp("Type")
+			continue
+		
+		local type := ctrl.Type
+		local BG_Invis_Force := InStr(ctrl.Name, "InvisBG_", 1) != 0 ? true : false
+
+		try {
+			fg := "", bg := "", opt := "", fs := "", font := "", fw := ""
+
+			switch type {
+				case "Button":
+					if InStr(ctrl.Name, "IconButton", 1) {
+						fg := themeMap["ButtonTextColor"]
+						fs := themeMap["ButtonFontSize"]
+						font := themeMap["ButtonFontStyle"]
+						fw := themeMap["ButtonFontWeight"]
+					} else if InStr(ctrl.Name, "InvisBG_", 1) {	
+						fg := themeMap["ButtonTextColor"]
+						fs := themeMap["ButtonFontSize"]
+						font := themeMap["ButtonFontStyle"]
+						fw := themeMap["ButtonFontWeight"]
+
+						opt := "BackgroundTrans" (fg ? " c" fg : "")
+						continue
+					}
+
+					if BG_Invis_Force
+						bg := "Trans"
+					else
+						bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
+					
+					opt := "Background" bg (fg ? " c" fg : "")
+				case "Text", "GroupBox":
+					if InStr(ctrl.Name, "SideBarBackground", 1) {
+							local doSideBarDebug := false
+							if doSideBarDebug
+								bg := "cc0000"
+							else {
+								bg := "Trans"
+							if ctrl.Visible
+								ctrl.Visible := false
+						}
+					} else if InStr(ctrl.Name, "DescriptionBox", 1) {
+						if BG_Invis_Force
+							bg := "Trans"
+						else
+							bg := IsTransparent(themeMap["DescriptionBoxColor"]) ? "Trans" : themeMap["DescriptionBoxColor"] ? themeMap["DescriptionBoxColor"] : themeMap["Background"]
+							fg := themeMap["DescriptionBoxTextColor"]
+					} else if InStr(ctrl.Name, "NotificationTitle", 1) {
+						if BG_Invis_Force
+							bg := "Trans"
+						else
+							bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
+						fg := themeMap["HeaderColor"]
+					} else if InStr(ctrl.Name, "Header", 1) {
+						if BG_Invis_Force
+							bg := "Trans"
+						else
+							bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
+						fg := themeMap["HeaderColor"]
+					} else if InStr(ctrl.Name, "DescriptionGroupBox", 1) {
+						bg := "Trans"
+						fg := themeMap["DescriptionBoxTextColor"]
+ 					} else {
+						if BG_Invis_Force
+							bg := "Trans"
+						else
+							bg := IsTransparent(themeMap["TextLabelBackgroundColor"]) ? "Trans" : themeMap["TextLabelBackgroundColor"] ? themeMap["TextLabelBackgroundColor"] : themeMap["Background"]
+						fg := themeMap["TextColor"]
+					}
+
+					opt := "Background" bg " c" fg
+				case "Edit":
+					bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
+					fg := themeMap["TextColor"]
+					if BG_Invis_Force
+						bg := "Trans"
+					opt := "Background" bg " Smooth c" fg
+				case "CheckBox":
+					bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
+					fg := themeMap["TextColor"]
+					if BG_Invis_Force
+						bg := "Trans"
+					opt := "Background" bg " Smooth c" fg
+				case "Progress":
+					fg := themeMap["ProgressBarColor"]
+					bg := themeMap["ProgressBarBackground"]
+					opt := "Background" bg " Smooth c" fg
+				case "Link":
+					fg := themeMap["LinkColor"]
+					opt := "c" fg
+				case "Slider":
+					fg := themeMap["TextColor"]
+					bg := "Trans"
+					opt := "Background" bg " Smooth c" fg
+				default:
+					continue ; Skip unsupported or unknown control types
+			}
+			
+			; Sanitize fg/bg for comparison
+			fg := fg ?? ""
+			bg := bg ?? ""
+			fs := fs ?? ""
+			fw := fw ?? ""
+			font := font ?? ""
+
+			; Check if update is needed
+			needsUpdate := (
+				!ctrl.HasOwnProp("_lastFG") || ctrl._lastFG != fg
+
+				|| !ctrl.HasOwnProp("_lastBG") || ctrl._lastBG != bg
+
+				|| !ctrl.HasOwnProp("_lastFS") || ctrl._lastFS != fs
+
+				|| !ctrl.HasOwnProp("_lastFW") || ctrl._lastFW != fw
+				
+				|| !ctrl.HasOwnProp("_lastFont") || ctrl._lastFont != font
+			)
+
+			if needsUpdate {
+				try ctrl.Opt(opt)
+				try ctrl.SetFont("s" fs " w" fw, font)
+				try ctrl.Redraw()
+
+				ctrl._lastFG := fg
+				ctrl._lastBG := bg
+				ctrl._lastFS := fs
+				ctrl._lastFW := fw
+				ctrl._lastFont := font
+			}
+		}
+	}
+
+	; Update GUI background
+	if guiObj.BackColor != themeMap["MainMenuBackground"]
+		guiObj.BackColor := themeMap["MainMenuBackground"]
+}
+
 CheckDeviceTheme(*) {
 	global currentTheme
 	global MainUI
@@ -2978,7 +3159,8 @@ CheckDeviceTheme(*) {
 	global WindowSettingsUI
 	global ExtrasUI
 	global ScriptSettingsUI
-	
+	global PatchUI
+
 	; Check if themes.ini exists
 	if !FileExist(localScriptDir "\themes.ini")
 		return updateGlobalThemeVariables(currentTheme)
@@ -2993,6 +3175,8 @@ CheckDeviceTheme(*) {
 		try updateGUITheme(ExtrasUI)
 	if ScriptSettingsUI
 		try updateGUITheme(ScriptSettingsUI)
+	if PatchUI
+		try updateGUITheme(PatchUI)
 }
 
 GetDefaultThemes(*) {
@@ -3132,147 +3316,6 @@ LoadThemeFromINI(themeName, filePath := localScriptDir "\themes.ini") {
 	return theme
 }
 
-ApplyThemeToGui(guiObj, themeMap) {
-	if !guiObj or !themeMap
-		return
-
-	IsTransparent(val) {
-		static transparentSet := Map("0", 1, "none", 1, "n/a", 1, "transparent", 1, "zero", 1, "clear", 1)
-		return transparentSet.Has(val) ? true : false
-	}
-
-	; Prevent full-black backgrounds which can create Z-index rendering issues
-	if themeMap.Has("Background") and (themeMap["Background"] = "000000" or themeMap["Background"] = "0x000000")
-		themeMap["Background"] := "0a0a0a"
-	
-	for _, ctrl in guiObj {
-		; Skip invalid controls
-		if !ctrl || !ctrl.HasProp("Type")
-			continue
-		
-		local type := ctrl.Type
-		local BG_Invis_Force := InStr(ctrl.Name, "InvisBG_", 1) != 0 ? true : false
-
-		try {
-			fg := "", bg := "", opt := "", fs := "", font := "", fw := ""
-
-			switch type {
-				case "Button":
-					if InStr(ctrl.Name, "IconButton", 1) {
-						fg := themeMap["ButtonTextColor"]
-						fs := themeMap["ButtonFontSize"]
-						font := themeMap["ButtonFontStyle"]
-						fw := themeMap["ButtonFontWeight"]
-					} else if InStr(ctrl.Name, "InvisBG_", 1) {	
-						fg := themeMap["ButtonTextColor"]
-						fs := themeMap["ButtonFontSize"]
-						font := themeMap["ButtonFontStyle"]
-						fw := themeMap["ButtonFontWeight"]
-
-						opt := "BackgroundTrans" (fg ? " c" fg : "")
-						continue
-					}
-
-					if BG_Invis_Force
-						bg := "Trans"
-					else
-						bg := IsTransparent(themeMap["Background"]) ? "Trans" : themeMap["Background"]
-					
-					opt := "Background" bg (fg ? " c" fg : "")
-				case "Edit", "Text", "GroupBox":
-					if InStr(ctrl.Name, "SideBarBackground", 1) {
-							local doSideBarDebug := false
-							if doSideBarDebug
-								bg := "cc0000"
-							else {
-								bg := "Trans"
-							if ctrl.Visible
-								ctrl.Visible := false
-						}
-					} else if InStr(ctrl.Name, "DescriptionBox", 1) {
-						if BG_Invis_Force
-							bg := "Trans"
-						else
-							bg := IsTransparent(themeMap["DescriptionBoxColor"]) ? "Trans" : themeMap["DescriptionBoxColor"] ? themeMap["DescriptionBoxColor"] : themeMap["Background"]
-							fg := themeMap["DescriptionBoxTextColor"]
-					} else if ctrl.Name == "NotificationTitle" {
-						if BG_Invis_Force
-							bg := "Trans"
-						else
-							bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
-						fg := themeMap["HeaderColor"]
-					} else if InStr(ctrl.Name, "Header", 1) {
-						if BG_Invis_Force
-							bg := "Trans"
-						else
-							bg := IsTransparent(themeMap["MainMenuBackground"]) ? "Trans" : themeMap["MainMenuBackground"] ? themeMap["MainMenuBackground"] : themeMap["Background"]
-						fg := themeMap["HeaderColor"]
-					} else if ctrl.Name == "DescriptionGroupBox" {
-						bg := "Trans"
-						fg := themeMap["DescriptionBoxTextColor"]
- 					} else {
-						if BG_Invis_Force
-							bg := "Trans"
-						else
-							bg := IsTransparent(themeMap["TextLabelBackgroundColor"]) ? "Trans" : themeMap["TextLabelBackgroundColor"] ? themeMap["TextLabelBackgroundColor"] : themeMap["Background"]
-						fg := themeMap["TextColor"]
-					}
-
-					opt := "Background" bg " c" fg
-				case "Progress":
-					fg := themeMap["ProgressBarColor"]
-					bg := themeMap["ProgressBarBackground"]
-					opt := "Background" bg " Smooth c" fg
-				case "Link":
-					fg := themeMap["LinkColor"]
-					opt := "c" fg
-				case "Slider":
-					fg := themeMap["TextColor"]
-					bg := "Trans"
-					opt := "Background" bg " Smooth c" fg
-				default:
-					continue ; Skip unsupported or unknown control types
-			}
-			
-			; Sanitize fg/bg for comparison
-			fg := fg ?? ""
-			bg := bg ?? ""
-			fs := fs ?? ""
-			fw := fw ?? ""
-			font := font ?? ""
-
-			; Check if update is needed
-			needsUpdate := (
-				!ctrl.HasOwnProp("_lastFG") || ctrl._lastFG != fg
-
-				|| !ctrl.HasOwnProp("_lastBG") || ctrl._lastBG != bg
-
-				|| !ctrl.HasOwnProp("_lastFS") || ctrl._lastFS != fs
-
-				|| !ctrl.HasOwnProp("_lastFW") || ctrl._lastFW != fw
-				
-				|| !ctrl.HasOwnProp("_lastFont") || ctrl._lastFont != font
-			)
-
-			if needsUpdate {
-				try ctrl.Opt(opt)
-				try ctrl.SetFont("s" fs " w" fw, font)
-				try ctrl.Redraw()
-
-				ctrl._lastFG := fg
-				ctrl._lastBG := bg
-				ctrl._lastFS := fs
-				ctrl._lastFW := fw
-				ctrl._lastFont := font
-			}
-		}
-	}
-
-	; Update GUI background
-	if guiObj.BackColor != themeMap["MainMenuBackground"]
-		guiObj.BackColor := themeMap["MainMenuBackground"]
-}
-
 SaveThemeToINI(themeMap, section, filePath := localScriptDir "\themes.ini") {
 	if !themeMap || !section || !filePath
 		return
@@ -3295,6 +3338,16 @@ isPixelColorInRadius(x, y, color, radius) {
 ; ############################### ;
 ; ###### Utility Functions ###### ;
 ; ############################### ;
+
+tick() {
+    static EPOCH_OFFSET := 116444736000000000  ; 100ns intervals from 1601 to 1970
+    buf := Buffer(8, 0)                         ; allocate 8 bytes
+    DllCall("GetSystemTimeAsFileTime", "Ptr", buf.Ptr)
+    fileTime := NumGet(buf, 0, "Int64")         ; read 64-bit FILETIME
+	; Free the buffer
+	buf := unset                                   ; release the buffer
+    return math.round((fileTime - EPOCH_OFFSET) / 10000000) ; convert to seconds
+}
 
 CooldownEditPopup(*) {
 	
@@ -3429,16 +3482,6 @@ easeInOutSine(t) {
 ; ################################ ;
 ; ####### Debug Functions ######## ;
 ; ################################ ;
-
-tick() {
-    static EPOCH_OFFSET := 116444736000000000  ; 100ns intervals from 1601 to 1970
-    buf := Buffer(8, 0)                         ; allocate 8 bytes
-    DllCall("GetSystemTimeAsFileTime", "Ptr", buf.Ptr)
-    fileTime := NumGet(buf, 0, "Int64")         ; read 64-bit FILETIME
-	; Free the buffer
-	buf := unset                                   ; release the buffer
-    return math.round((fileTime - EPOCH_OFFSET) / 10000000) ; convert to seconds
-}
 
 Print(vals*) {
 	local output := ""
@@ -3944,20 +3987,6 @@ updateIniProfileSection(filePath, section, settingsMap) {
         updateIniProfileSetting(filePath, section, key, val)
 }
 
-WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
-    global MainUI, MainUI_PosX, MainUI_PosY
-	global SelectedProcessExe, ProfilesDir, localScriptDir
-    ; 0xF020 (SC_MINIMIZE) indicates the user is minimizing the window.
-    if (wParam = 0xF020) {
-        ; Save the current (restored) position before the minimize animation starts.
-        pos := WinGetMinMax(MainUI.Title) != -1 and WinGetPos(&X := MainUI_PosX,&Y := MainUI_PosY,,,MainUI.Title)
-		pos := {X: X, Y: Y}
-
-		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", A_ScreenWidth / 2, "int")
-		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", A_ScreenHeight / 2, "int")
-    }
-}
-
 GetRandomColor(minVal := 0, maxVal := 255) {
     minVal := Max(0, Min(255, minVal)) ; Ensure min is within range
     maxVal := Max(0, Min(255, maxVal)) ; Ensure max is within range
@@ -4253,8 +4282,8 @@ removeFromArray(array, item) {
 	return array
 }
 
-ArrayHasValue(arr, target) {
-	for pos, val in arr {
+ArrayHasValue(arrayTarget, target) {
+	for pos, val in arrayTarget {
 		if (target == val)
 			return pos
 	}
@@ -4312,6 +4341,8 @@ global versionTags := GetGitHubReleaseTags(GeneralData["author"], GeneralData["r
 
 ShowPatchNotesGUI(release := "latest") {
     global GeneralData
+	global versionTags
+
 	if !GeneralData["versionData"].Has(release) {
 		local initialLatestData := GetGitHubReleaseInfo(GeneralData["author"], GeneralData["repo"], release)
 		GeneralData["versionData"][release] := Map("Patchnotes", "")
@@ -4325,40 +4356,71 @@ ShowPatchNotesGUI(release := "latest") {
 	global AlwaysOnTopActive
 	global MainUI_PosX
 	global MainUI_PosY
-	global PatchUI
-	global ExtrasUI
+	global PatchUI, ExtrasUI, MainUI
+	global buttonFontSize, buttonFontWeight, buttonFont, buttonHeight, intWindowColor, ControlTextColor
 
 	local Popout_Width := "700"
 	local Popout_Height := "400"
+	local marginX := 10
+	local marginY := 10
+
 	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
 	githubResponse := GeneralData["versionData"][release]["Patchnotes"] ? Map("title", release, "body", GeneralData["versionData"][release]["Patchnotes"]) : GetGitHubReleaseInfo(GeneralData["author"], GeneralData["repo"], release)
 	patchNotes := githubResponse
 	
     ; Create GUI Window
-	if PatchUI
+	if PatchUI {
 		PatchUI.Destroy()
+		PatchUI := ""
+	}
 
 	PatchUI := Gui(AOTStatus)
 	if ExtrasUI
-		PatchUI.Opt("+Owner" . ExtrasUI.Hwnd)
+		PatchUI.Opt("+Owner" . MainUI.Hwnd)
 
+	PatchUI.MarginX := marginX/2
+	PatchUI.MarginY := marginY/2
 	PatchUI.BackColor := intWindowColor
 	PatchUI.Title := "Patchnotes"
 	
-	local PatchnotesLabel := PatchUI.Add("Text", "Section Center vPatchnotesLabel h40 w" (Popout_Width-PatchUI.MarginX), "Patchnotes: " patchNotes["title"])
-	PatchnotesLabel.SetFont("s20 w600", "Consolas")
-	PatchnotesLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+	local PatchnotesLabel := PatchUI.Add("Text", "Section Center vPatchnotesLabel h40 w" (Popout_Width-marginX), "Patchnotes: " patchNotes["title"])
 	PatchNotesLabel.GetPos(,,&LabelWidth,&LabelHeight)
 
-	local VersionList := PatchUI.Add("DropDownList", "xm Section Center vVersionList R10 h60 w" (Popout_Width-PatchUI.MarginX)/2.5, ["latest"])
-	VersionList.SetFont("s12", "Consolas")
-	VersionList.Opt("Background" intWindowColor . " c" ControlTextColor)
+	local VersionList := PatchUI.Add("DropDownList", "xm+" Popout_Width/3 - marginX " Section Center vVersionList R10 h" buttonHeight " w" (Popout_Width-marginX)/2.5, ["latest"])
 	VersionList.Value := 1
-	VersionList.Move((Popout_Width/3) - PatchUI.MarginX)
+	; VersionList.Move((Popout_Width/3) - marginX)
 	VersionList.GetPos(,,&LabelWidth,&ListHeight)
-	VersionList.OnEvent("Change", SelectNewOption)
+
 	local addedHeight := LabelHeight + ListHeight
+	local BodyBox := PatchUI.Add("Edit", "x" marginX " ys+" buttonHeight+marginY " vPatchnotes VScroll Section ReadOnly h" (Popout_Height+marginY) - addedHeight " w" Popout_Width-marginX, patchNotes["body"])
+
+	if versionTags.Length > 0
+		for index, tag in versionTags
+			VersionList.Add([tag])
+
+	
+	PatchnotesLabel.SetFont("s" 20 " w" buttonFontWeight, buttonFont)
+	VersionList.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
+	BodyBox.SetFont("s14 w600", "Consolas")
+
+	PatchnotesLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+	VersionList.Opt("Background" intWindowColor . " c" ControlTextColor)
+	BodyBox.Opt("Background555555" . " c" ControlTextColor)
+
+	VersionList.OnEvent("Change", SelectNewOption)
+
+	PatchUI.Show("Hide AutoSize")
+
+	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
+	WinGetPos(,,&patchUI_width,&patchUI_height, PatchUI.Title)
+	
+	SelectNewOption()
+	CheckDeviceTheme()
+	
+	CenterX := MainX + (MainW / 2) - (patchUI_width / 2)
+	CenterY := MainY + (MainH / 2) - (patchUI_height / 2)
+	PatchUI.Show("AutoSize X" CenterX " Y" CenterY)
 
 	SelectNewOption(*) {
 		githubResponse := GeneralData["versionData"].Has([VersionList.Text]) ? Map("title", VersionList.Text, "body", GeneralData["versionData"][VersionList.Text]["Patchnotes"]) : GetGitHubReleaseInfo(GeneralData["author"], GeneralData["repo"], VersionList.Text)
@@ -4374,33 +4436,6 @@ ShowPatchNotesGUI(release := "latest") {
 			PatchnotesLabel.Text := "Patchnotes: " (StrLower(VersionList.Text) == "latest" ? patchNotes["title"] . " (Latest)" : patchNotes["title"])
 		}
 	}
-
-	if versionTags.Length > 0
-		for index, tag in versionTags {
-			VersionList.Add([tag])
-			; option.SetFont("s10 w300", "Consolas")
-			; option.Opt("Background" intWindowColor . " c" ControlTextColor)
-		}
-
-	PatchUI.Show("Hide")
-
-	local BodyBox := PatchUI.Add("Edit", "xs y+20 vPatchnotes VScroll Section ReadOnly h" (Popout_Height-PatchUI.MarginY) - addedHeight " w" Popout_Width-PatchUI.MarginX, patchNotes["body"])
-	BodyBox.SetFont("s14 w600", "Consolas")
-	BodyBox.Opt("Background555555" . " c" ControlTextColor)
-	
-	PatchUI.Show("Hide AutoSize")
-	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
-	WinGetPos(,,&patchUI_width,&patchUI_height, PatchUI.Title)
-
-	SelectNewOption()
-	
-	PatchUI.Show("AutoSize")
-
-
-
-	CenterX := MainX + (MainW / 2) - (patchUI_width / 2)
-	CenterY := MainY + (MainH / 2) - (patchUI_height / 2)
-	PatchUI.Show("X" CenterX " Y" CenterY)
 }
 
 GetGitHubReleaseInfo(owner, repo, release := "latest") {
@@ -4451,20 +4486,38 @@ GetGitHubReleaseInfo(owner, repo, release := "latest") {
 
 GetGitHubReleaseTags(owner, repo) {
     ; repo should be something like "username/repo"
-    url := "https://api.github.com/repos/" owner "/" repo "/releases"
+	url := "https://api.github.com/repos/" owner "/" repo "/releases"
+
     http := ComObject("WinHttp.WinHttpRequest.5.1")
     http.Open("GET", url, false)
-    http.Send()
+    
+	try
+		http.Send()
+	catch Error as e {
+		SendNotification("Failed to fetch release tags. Error: " Print*(e.Message))
+		return []
+	}
+
+	; Check if the request was successful
+	if (http.Status != 200) {
+		SendNotification("Failed to fetch release tags. Status: " Print*(http.Status))
+		return []
+	}
+
     jsonStr := http.ResponseText
-    tags := []
+    tags := arr()
     pos := 1
     ; Extract tag_name values directly from the JSON string.
-    while RegExMatch(jsonStr, '"tag_name"\s*:\s*"([^"]+)"', &m, pos) {
-        tag := m[1]
-        if RegExMatch(tag, "^\d+(\.\d+)*$")  ; only accept version-like tags
-            tags.Push(tag)
-        pos := m.Pos + m.Len
-    }
+    while RegExMatch(jsonStr, '"tag_name"\s*:\s*"([^"]+)"[\s\S]*?"prerelease"\s*:\s*(true|false)', &m, pos) {
+		tag := m[1]
+
+		; Accept both stable and pre-release tags like 2.7.0-beta.1
+		if RegExMatch(tag, "^\d+(\.\d+)*$")  ; only accept version-like tags
+			tags.Push(tag)
+
+		pos := m.Pos + m.Len
+	}
+
     return tags
 }
 
