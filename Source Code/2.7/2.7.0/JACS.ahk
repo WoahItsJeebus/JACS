@@ -405,7 +405,6 @@ CreateGui(*) {
 	MainUI.MarginX := MarginX
 	MainUI.MarginY := MarginY
 	
-	StartProcessWindowWatcher()
 	createMainButtons()
 	createSideBar()
     ; UpdateTimerLabel()
@@ -456,11 +455,6 @@ runNecessaryTimers(*) {
 		"ScrollTip", Map(
 			"Function", ScrollTip.Bind(),
 			"Interval", refreshRate * 0.225,
-			"Disabled", false
-		),
-		"ProcessWindowWater", Map(
-			"Function", StartProcessWindowWatcher.Bind(),
-			"Interval", 5000,
 			"Disabled", false
 		),
 	)
@@ -535,9 +529,9 @@ createMainButtons(*) {
 	SeparationLine.BackColor := "0x8"
 	
 	; Progress Bar
-	local allProcessKeys := ProcessWindowCache[SelectedProcessExe]
+	; local allProcessKeys := ProcessWindowCache[SelectedProcessExe]
 	global ID_SelectorLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " y+0 Center vID_SelectorLabel h" buttonHeight " w" UI_Margin_Width, SelectedProcessExe)
-	global ID_Selector := MainUI.Add("DropDownList", "x" ICON_WIDTH*2 " y+0 Center vID_Selector R10 h" buttonHeight " w" UI_Margin_Width " Choose1", allProcessKeys)
+	; global ID_Selector := MainUI.Add("DropDownList", "x" ICON_WIDTH*2 " y+0 Center vID_Selector R10 h" buttonHeight " w" UI_Margin_Width " Choose1", allProcessKeys)
 	global WaitTimerLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " vWaitTimerLabel Center 0x300 0xC00 h20 w" UI_Margin_Width, "0%")
 	global WaitProgress := MainUI.Add("Progress", "x" ICON_WIDTH*2 " vWaitProgress Center h40 w" UI_Margin_Width)
 	global ElapsedTimeLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " vElapsedTimeLabel Center 0x300 0xC00 h20 w" UI_Margin_Width, "00:00 / 0 min")
@@ -555,7 +549,7 @@ createMainButtons(*) {
 	ElapsedTimeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 	WaitProgress.Opt("Background" intProgressBarColor)
 	CreditsLink.Opt("c" linkColor)
-	ID_Selector.Opt("Background" intWindowColor . " c" ControlTextColor)
+	; ID_Selector.Opt("Background" intWindowColor . " c" ControlTextColor)
 	ID_SelectorLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 
 	Header.SetFont("s18 w600", "Ink Free")
@@ -564,10 +558,10 @@ createMainButtons(*) {
 	ElapsedTimeLabel.SetFont("s" buttonFontSize*1.15 " w" buttonFontWeight, buttonFont)
 	WaitTimerLabel.SetFont("s" buttonFontSize*1.15 " w" buttonFontWeight, buttonFont)
 	CreditsLink.SetFont("s" buttonFontSize*1.15 " w" buttonFontWeight, buttonFont)
-	ID_Selector.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
+	; ID_Selector.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 	ID_SelectorLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
 
-	ID_Selector.OnEvent("Change", (*) => UpdateTimerLabel)
+	; ID_Selector.OnEvent("Change", (*) => UpdateTimerLabel)
 }
 
 createSideBar(*) {
@@ -645,6 +639,7 @@ CreateWindowSettingsGUI(*) {
 	global MainUI_PosY
 	global currentHotkey
 	global ProfilesDir
+	global ID_SelectorLabel
 	; local HotkeyLabel := ""
 	; local HotkeyButton := ""
 
@@ -787,7 +782,7 @@ CreateWindowSettingsGUI(*) {
 		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SelectedTheme", selectedTheme)
 		currentTheme := selectedTheme
 		themeLabel.Text := "Theme: " . selectedTheme
-
+		
 		updateGlobalThemeVariables(selectedTheme)
 		CheckDeviceTheme()
 		; updateGUITheme(WindowSettingsUI)
@@ -797,6 +792,7 @@ CreateWindowSettingsGUI(*) {
 	OnProcessDropdownChange(*) {
 		local selectedExe := ProcessDropdown.Text  ; get the selected process name
 		ProcessLabel.Text := "Searching for: " . selectedExe
+		ID_SelectorLabel.Text := selectedExe
 		
 		SetSelectedProcessName(selectedExe)
 		loadProfileSettings(selectedExe)
@@ -1726,6 +1722,15 @@ UpdateTimerLabel(*) {
 	global WaitProgress
 	global WaitTimerLabel
 	global ID_Selector
+<<<<<<< HEAD
+	global SelectedProcessExe
+	
+	local ID := (ID_Selector and ID_Selector.Text) ? ID_Selector.Text : SelectedProcessExe
+	if !lastUpdateTimes.Has(ID) or (lastUpdateTimes.Has(ID) and isActive == 1){
+		lastUpdateTimes.Set(ID, tick())
+		SendNotification("Updated lastUpdateTimes for ID: " ID " to " lastUpdateTimes.Get(ID))
+	}
+=======
 	global SelectedProcessExe, ProcessWindowCache
 
 	local IDs := ProcessWindowCache[SelectedProcessExe]
@@ -1734,13 +1739,19 @@ UpdateTimerLabel(*) {
 		lastUpdateTimes[ID] := A_TickCount
 	else
 		lastUpdateTimes[ID] := isActive > 1 and lastUpdateTimes[ID] or A_TickCount
+>>>>>>> parent of 38be338 ([Broken Build])
 	
 	global ID_SelectorLabel
 	if ID_SelectorLabel and ID_SelectorLabel.Text != SelectedProcessExe
 		ID_SelectorLabel.Text := SelectedProcessExe
 
 	; Calculate and update progress bar
+<<<<<<< HEAD
+    secondsPassed := (tick() - lastUpdateTimes[ID])  ; Convert ms to seconds
+	
+=======
     secondsPassed := (A_TickCount - lastUpdateTimes[ID]) / 1000  ; Convert ms to seconds
+>>>>>>> parent of 38be338 ([Broken Build])
     finalProgress := Round((MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100, 0)
 	
 	; Calculate and format CurrentElapsedTime as MM:SS
@@ -1765,6 +1776,12 @@ UpdateTimerLabel(*) {
 		WaitTimerLabel.Text := finalText
 }
 
+<<<<<<< HEAD
+ResetCooldown(ID) {
+	global CoreToggleButton, ElapsedTimeLabel, WaitProgress, WaitTimerLabel, activeText_Core, lastUpdateTimes, ID_Selector
+	global SelectedProcessExe
+
+=======
 ResetCooldown(*) {
 	global CoreToggleButton
 	global ElapsedTimeLabel
@@ -1773,6 +1790,7 @@ ResetCooldown(*) {
 	global activeText_Core
 	global lastUpdateTimes
 	
+>>>>>>> parent of 38be338 ([Broken Build])
 	activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
 
 	if CoreToggleButton and CoreToggleButton.Text != "Auto-Clicker: " activeText_Core
@@ -1786,7 +1804,7 @@ ResetCooldown(*) {
 	; Reset cooldown progress bar
 	UpdateTimerLabel()
 	
-	if isActive <= 2 or (WaitProgress and WaitProgress.Value != 0 and (MinutesToWait > 0 or SecondsToWait > 0))
+	if WaitProgress and WaitProgress.Value != 0 and (isActive <= 2 or (MinutesToWait > 0 or SecondsToWait > 0))
 		WaitProgress.Value := 0
     
 	local finalText  := Round((WaitProgress and WaitProgress.Value or 0), 0) "%"
@@ -1869,10 +1887,17 @@ RunCore(ID := SelectedProcessExe, FirstRun := false) {
 	if isActive == 1
 		return
 
+<<<<<<< HEAD
+	if (FirstRun or isCompleted) and (ID or FindTargetHWND()) {
+		ResetCooldown(ID)
+
+		if IsAltTabOpen() or (SecondsToWait < 10 and SelectedProcessExe and !WinActive(SelectedProcessExe))
+=======
 	if (FirstRun or (WaitProgress and WaitProgress.Value >= 100)) and (ID or FindTargetHWND()) {
 		ResetCooldown()
 		
 		if IsAltTabOpen() or (SecondsToWait < 10 and ProcessWindowCache[SelectedProcessExe] and !ProcessWindowCache[SelectedProcessExe].Has(WinActive("A")))
+>>>>>>> parent of 38be338 ([Broken Build])
 			return
 		
 		if playSounds == 1
@@ -2621,6 +2646,8 @@ FindTargetHWND(*) {
 	return foundWindow
 }
 
+<<<<<<< HEAD
+=======
 StartProcessWindowWatcher(exeName := "") {
 	static watcherTimers := Map()
 	static ProcessCoreTimers := Map()
@@ -2700,13 +2727,12 @@ StartProcessWindowWatcher(exeName := "") {
 		watcherTimers[exeName] := true
 }
 
+>>>>>>> parent of 38be338 ([Broken Build])
 ClickWindow(optionalHWND := "") {
 	global SelectedProcessExe, LastActiveWindow := false
 	global MouseSpeed, MouseClickRateOffset, MouseClickRadius, MouseClicks
 	global KeyToSend, MinutesToWait, SecondsToWait
-	global ProcessWindowCache
-	
-	local allWindows := ProcessWindowCache.Has(SelectedProcessExe) ? ProcessWindowCache[SelectedProcessExe] : false
+	local target := "ahk_exe " . SelectedProcessExe
 
 	try
 		LastActiveWindow := WinActive(SelectedProcessExe)
@@ -2753,22 +2779,6 @@ ClickWindow(optionalHWND := "") {
 	if optionalHWND
 		return doClick(optionalHWND, MouseClicks || 5)
 	
-	if IsA(allWindows, "array") {
-		if allWindows.Length > 1 {
-			for ID in allWindows {
-				MouseGetPos(&mouseX, &mouseY, &hoverWindow)
-				if !LastActiveWindow or ID != LastActiveWindow && ID {
-					if hoverWindow && hoverWindow != ID && hoverWindow != ID {
-						doClick(ID, MouseClicks || 5)
-						SendNotification("Clicking on " . ID)
-					}
-				}
-			}
-		} else {
-			doClick(allWindows[1], MouseClicks || 5)
-		}
-	}
-	
 	ActivateWindow(target) {
 		try {
 			if (MinutesToWait <= 0 || SecondsToWait <= 0)
@@ -2787,7 +2797,12 @@ ClickWindow(optionalHWND := "") {
 }
 
 isMouseClickingOnTargetWindow(key?, override*) {
+<<<<<<< HEAD
+	global initializing, ProcessWindowCache, SelectedProcessExe
+
+=======
 	global initializing
+>>>>>>> parent of 38be338 ([Broken Build])
 	if initializing
 		return
 
@@ -2802,13 +2817,19 @@ isMouseClickingOnTargetWindow(key?, override*) {
 		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
 		
 		if hoverWindow == process
+<<<<<<< HEAD
+			ResetCooldown(hoverWindow)
+=======
 			return ResetCooldown()
+>>>>>>> parent of 38be338 ([Broken Build])
 	}
 	
 	if override[1]
 		return checkWindow()
 	
-	SetTimer(checkWindow, 100, 1)
+	; SetTimer(checkWindow, 100, 1)
+	while (GetKeyState(key) == 1)
+		checkWindow()
 }
 
 MonitorGetNumberFromPoint(x, y) {
@@ -3775,6 +3796,7 @@ createDefaultProfileSettings(processName) {
 
 SetSelectedProcessName(name) {
 	global ProfilesDir, SelectedProcessExe
+	SelectedProcessExe := name
     updateIniProfileSetting(ProfilesDir, "SelectedProcessExe", "Process", name)
 }
 
