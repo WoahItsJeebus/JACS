@@ -523,7 +523,9 @@ createMainButtons(*) {
 
 	; Reset Cooldown
 	global ResetCooldownButton := MainUI.Add("Button", "x" (ICON_WIDTH*2) + UI_Margin_Width*0.375 " h30 w" UI_Margin_Width/4, "Reset")
-	ResetCooldownButton.OnEvent("Click", ResetCooldown)
+	ResetCooldownButton.OnEvent("Click", (*) => (
+		ResetCooldown(ProcessWindowCache[SelectedProcessExe])
+	))
 
 	SeparationLine := MainUI.Add("Text", "Section x" ICON_WIDTH*2 " 0x7 h1 w" UI_Margin_Width) ; Separation Space
 	SeparationLine.BackColor := "0x8"
@@ -1722,7 +1724,6 @@ UpdateTimerLabel(*) {
 	global WaitProgress
 	global WaitTimerLabel
 	global ID_Selector
-<<<<<<< HEAD
 	global SelectedProcessExe
 	
 	local ID := (ID_Selector and ID_Selector.Text) ? ID_Selector.Text : SelectedProcessExe
@@ -1730,28 +1731,14 @@ UpdateTimerLabel(*) {
 		lastUpdateTimes.Set(ID, tick())
 		SendNotification("Updated lastUpdateTimes for ID: " ID " to " lastUpdateTimes.Get(ID))
 	}
-=======
-	global SelectedProcessExe, ProcessWindowCache
-
-	local IDs := ProcessWindowCache[SelectedProcessExe]
-	local ID := (ID_Selector and ID_Selector.Text != "") ? Number(ID_Selector.Text) : IDs[1]
-	if !lastUpdateTimes.Has(ID)
-		lastUpdateTimes[ID] := A_TickCount
-	else
-		lastUpdateTimes[ID] := isActive > 1 and lastUpdateTimes[ID] or A_TickCount
->>>>>>> parent of 38be338 ([Broken Build])
 	
 	global ID_SelectorLabel
 	if ID_SelectorLabel and ID_SelectorLabel.Text != SelectedProcessExe
 		ID_SelectorLabel.Text := SelectedProcessExe
 
 	; Calculate and update progress bar
-<<<<<<< HEAD
     secondsPassed := (tick() - lastUpdateTimes[ID])  ; Convert ms to seconds
 	
-=======
-    secondsPassed := (A_TickCount - lastUpdateTimes[ID]) / 1000  ; Convert ms to seconds
->>>>>>> parent of 38be338 ([Broken Build])
     finalProgress := Round((MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100, 0)
 	
 	; Calculate and format CurrentElapsedTime as MM:SS
@@ -1776,25 +1763,16 @@ UpdateTimerLabel(*) {
 		WaitTimerLabel.Text := finalText
 }
 
-<<<<<<< HEAD
 ResetCooldown(ID) {
 	global CoreToggleButton, ElapsedTimeLabel, WaitProgress, WaitTimerLabel, activeText_Core, lastUpdateTimes, ID_Selector
 	global SelectedProcessExe
 
-=======
-ResetCooldown(*) {
-	global CoreToggleButton
-	global ElapsedTimeLabel
-	global WaitProgress
-	global WaitTimerLabel
-	global activeText_Core
-	global lastUpdateTimes
-	
->>>>>>> parent of 38be338 ([Broken Build])
 	activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
 
 	if CoreToggleButton and CoreToggleButton.Text != "Auto-Clicker: " activeText_Core
 		CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
+
+	lastUpdateTimes.Set(ID, tick())
 
 	if isActive == 2 and FindTargetHWND()
 		ToggleCore(,3)
@@ -1853,19 +1831,12 @@ ToggleCore(optionalControl?, forceState?, *) {
 		CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
 
 	setTrayIcon(icons[isActive].Icon)
-	ResetCooldown()
 	UpdateTimerLabel()
 }
 
 RunCore(ID := SelectedProcessExe, FirstRun := false) {
-	global MainUI
-	global UI_Width
-	global UI_Height
 	global playSounds
 	global isActive
-	
-	global EditButton
-	global ExitButton
 
 	global ReloadButton
 	global CoreToggleButton
@@ -1878,26 +1849,23 @@ RunCore(ID := SelectedProcessExe, FirstRun := false) {
 	global LastActiveWindow
 	global doMouseLock
 	global lastUpdateTimes
+	
+	local secondsPassed := (tick() - (lastUpdateTimes.Has(ID) and lastUpdateTimes[ID] or tick()))  ; Convert ms to seconds
+	local isCompleted := (secondsPassed / SecondsToWait) >= 1
+
 	; Check for process
 	if !FindTargetHWND()
-		ResetCooldown()
+		ResetCooldown(ID)
 	; 	ToggleCore(, 2)
 	
 	; Check if the toggle has been switched off
 	if isActive == 1
 		return
 
-<<<<<<< HEAD
 	if (FirstRun or isCompleted) and (ID or FindTargetHWND()) {
 		ResetCooldown(ID)
 
 		if IsAltTabOpen() or (SecondsToWait < 10 and SelectedProcessExe and !WinActive(SelectedProcessExe))
-=======
-	if (FirstRun or (WaitProgress and WaitProgress.Value >= 100)) and (ID or FindTargetHWND()) {
-		ResetCooldown()
-		
-		if IsAltTabOpen() or (SecondsToWait < 10 and ProcessWindowCache[SelectedProcessExe] and !ProcessWindowCache[SelectedProcessExe].Has(WinActive("A")))
->>>>>>> parent of 38be338 ([Broken Build])
 			return
 		
 		if playSounds == 1
@@ -1923,9 +1891,8 @@ RunCore(ID := SelectedProcessExe, FirstRun := false) {
 		}
 
 		; Find and activate process(es)
-		local target := ID or FindTargetHWND()
-		if target
-			ClickWindow(target)
+		
+		ClickWindow(ID)
 		
 		; Activate previous application window & reposition mouse
 		local lastActiveWindowID := ""
@@ -1942,7 +1909,7 @@ RunCore(ID := SelectedProcessExe, FirstRun := false) {
 		if (MinutesToWait > 0 or SecondsToWait > 0) and WaitProgress
 			WaitProgress.Value := 0
 
-		lastUpdateTimes.Set(ID, A_TickCount)
+		lastUpdateTimes[ID] := tick()
 		; lastUpdateTime := A_TickCount
 	}
 	
@@ -2646,88 +2613,6 @@ FindTargetHWND(*) {
 	return foundWindow
 }
 
-<<<<<<< HEAD
-=======
-StartProcessWindowWatcher(exeName := "") {
-	static watcherTimers := Map()
-	static ProcessCoreTimers := Map()
-
-	global SelectedProcessExe
-	global ProcessWindowCache
-	global isActive
-
-	if !exeName or exeName == ""
-		exeName := SelectedProcessExe
-
-	if !exeName
-		return SendNotification("No process selected to watch.")
-
-	if !watcherTimers.Has(exeName)
-		watcherTimers[exeName] := false
-
-	updateList() {
-		try {
-			local all := WinGetList("ahk_exe " exeName)
-			local filtered := []
-
-			for hwnd in all {
-				try {
-					if !WinExist(hwnd)
-						continue
-					if WinGetMinMax(hwnd) == -1  ; hidden/minimized
-						continue
-					if WinGetTitle(hwnd) == ""   ; no title
-						continue
-					WinGetPos(&x, &y, &w, &h, hwnd)
-					if (w < 200 || h < 200)      ; too small = not real window
-						continue
-					filtered.Push(hwnd)
-				}
-				catch
-					continue
-			}
-
-			ProcessWindowCache[exeName] := filtered
-		}
-		catch {
-			ProcessWindowCache[exeName] := []
-		}
-	}
-
-	updateList()
-
-	for exeName, hwnds in ProcessWindowCache {
-		if !ProcessWindowCache.Has(exeName)
-			ProcessWindowCache[exeName] := []
-
-		if isActive > 1 {
-			for _, ID in ProcessWindowCache[SelectedProcessExe] {
-				if ProcessCoreTimers.Has(ID) {
-					continue
-				}
-				else {
-					RunCore(ID, true)
-					ProcessCoreTimers.Set(ID, SetTimer(
-						RunCore.Bind(ID, false),
-						100,
-						ID
-					))
-				}
-			}
-		}
-		else if isActive == 1 {
-			for _, ID in ProcessWindowCache[SelectedProcessExe] {
-				if ProcessCoreTimers.Has(ID)
-					ProcessCoreTimers.Delete(ID)
-			}
-		}
-	}
-
-	if ProcessWindowCache.Has(exeName) && !watcherTimers[exeName]
-		watcherTimers[exeName] := true
-}
-
->>>>>>> parent of 38be338 ([Broken Build])
 ClickWindow(optionalHWND := "") {
 	global SelectedProcessExe, LastActiveWindow := false
 	global MouseSpeed, MouseClickRateOffset, MouseClickRadius, MouseClicks
@@ -2751,7 +2636,8 @@ ClickWindow(optionalHWND := "") {
 
 			ActivateWindow(cachedWindowID)
 
-			try WinGetPos(&WindowX, &WindowY, &Width, &Height, cachedWindowID)
+			try WinGetPos(&WindowX, &WindowY, &Width, &Height, "ahk_id" (cachedWindowID or targetID))
+			
 			if (Width <= 0 || Height <= 0)
 				return MsgBox("Invalid window dimensions.")
 
@@ -2790,22 +2676,18 @@ ClickWindow(optionalHWND := "") {
 
 			if !WinActive(target) && WinGetMinMax(target) != -1 {
 				WinActivate(target)
-				; WinWaitActive(target,,250)
+				WinWaitActive(target,,250)
 			}
 		}
 	}
 }
 
 isMouseClickingOnTargetWindow(key?, override*) {
-<<<<<<< HEAD
 	global initializing, ProcessWindowCache, SelectedProcessExe
 
-=======
-	global initializing
->>>>>>> parent of 38be338 ([Broken Build])
 	if initializing
 		return
-
+	
 	local process := FindTargetHWND()
 	if not process
 		return
@@ -2817,11 +2699,7 @@ isMouseClickingOnTargetWindow(key?, override*) {
 		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
 		
 		if hoverWindow == process
-<<<<<<< HEAD
 			ResetCooldown(hoverWindow)
-=======
-			return ResetCooldown()
->>>>>>> parent of 38be338 ([Broken Build])
 	}
 	
 	if override[1]
@@ -4343,8 +4221,6 @@ ArrayHasValue(arrayTarget, target) {
 	}
 	return false
 }
-
-ArrayHasKey := (array, value) => ArrayHasValue(array, value)
 
 ; Evaluate expressions in concatenated strings
 Eval(expr) {
