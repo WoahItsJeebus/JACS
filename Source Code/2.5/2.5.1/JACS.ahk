@@ -1,9 +1,6 @@
 #Requires AutoHotkey >=2.0.19 64-bit
 #SingleInstance Force
 
-global initializing := true
-global version := "2.6.4"
-
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
 SetTitleMatchMode 2
@@ -11,21 +8,13 @@ DetectHiddenWindows(true)
 A_HotkeyInterval := 0
 A_MaxHotkeysPerInterval := 1000
 global A_LocalAppData := EnvGet("LOCALAPPDATA")
-global localScriptDir := A_LocalAppData "\JACS\"
-global ProfilesDir := localScriptDir "Profiles.ini"
+localScriptDir := A_LocalAppData "\JACS\"
 
-global IconsFolder := localScriptDir "images\icons\"
-global ActiveIcon := localScriptDir "images\icons\Active.ico"
-global InactiveIcon := localScriptDir "images\icons\Inactive.ico"
-global SearchingIcon := localScriptDir "images\icons\Searching.ico"
-global initializingIcon := localScriptDir "images\icons\Initializing.ico"
-
-global doDebug := true
-global debugKey := "^F12"
-
-if doDebug {
-	Hotkey(debugKey, ReloadScript, "On")
-}
+IconsFolder := localScriptDir "images\icons\"
+ActiveIcon := localScriptDir "images\icons\Active.ico"
+InactiveIcon := localScriptDir "images\icons\Inactive.ico"
+SearchingIcon := localScriptDir "images\icons\Searching.ico"
+initializingIcon := localScriptDir "images\icons\Initializing.ico"
 
 sidebarData := [
 	{
@@ -69,33 +58,30 @@ icons := [
 	}
 ]
 
+global initializing := true
+global version := "2.5.1"
+
+RegKeyPath := "HKCU\Software\JACS"
 ;"HideGUIHotkey"
 
-global ICON_SPACING  := 20
-global ICON_WIDTH    := 40
-global BUTTON_HEIGHT := 40
-global HeaderHeight := 28
-global tipHeight := 20
-global buttonHeight := 23
-global PixelOffset := 10
-
-global SelectedProcessExe := GetSelectedProcessName()
-global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
+global SettingsExists := RegRead(RegKeyPath, "Exists", false)
+global oldSettingsRemoved := RegRead(RegKeyPath, "OldSettingsRemoved", false)
 global currentIcon := icons[4].Icon
-setTrayIcon(currentIcon)
 createDefaultSettingsData()
+checkForOldData()
 createDefaultDirectories()
+setTrayIcon(icons[4].Icon)
 
-global SettingsExists := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SettingsExists", false, "bool")
-global MinutesToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", 15, "int")
-global SecondsToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", MinutesToWait * 60, "int")
+global URL_SCRIPT := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
+global MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
+global SecondsToWait := SecondsToWait := RegRead(RegKeyPath, "SecondsToWait", MinutesToWait*60)
 global minCooldown := 0
 global lastUpdateTime := A_TickCount
 global CurrentElapsedTime := 0
-global playSounds := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SoundMode", 1, "int")
-global isInStartFolder := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "IsInStartFolder", false, "bool")
+global playSounds := RegRead(RegKeyPath, "SoundMode", 1)
+global isInStartFolder := RegRead(RegKeyPath, "isInStartFolder", false)
 
-global isActive := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isActive", 1, "int") ; 1 = Disabled, 2 = Waiting, 3 = Enabled
+global isActive := RegRead(RegKeyPath, "isActive", 1)
 global autoUpdateDontAsk := false
 global FirstRun := True
 global hwnd := ""
@@ -105,27 +91,15 @@ global hwnd := ""
 ; MainUI Data
 global MainUI := ""
 global ExtrasUI := ""
-
-global monitorNum := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MonitorNum", 1, "int")
-
-; Check if the monitor exists
-monitorCount := MonitorGetCount()
-if (monitorNum > monitorCount) {
-    posX := A_ScreenWidth / 2
-    posY := A_ScreenHeight / 2
-}
-
-global MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", A_ScreenWidth / 2)
-global MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", A_ScreenHeight / 2)
-global MainUI_Monitor := monitorNum
-
-global isUIHidden := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isUIHidden", false, "bool")
+global MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
+global MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
+global isUIHidden := RegRead(RegKeyPath, "isUIHidden", false)
 global MainUI_Disabled := false
 
-global UI_Width := "400"
+global UI_Width := "500"
 global UI_Height := "300"
-
-global tips := []  ; Will be populated from tips.ahk or defaults if it fails
+global Min_UI_Width := "500"
+global Min_UI_Height := "300"
 
 ; Core UI Buttons
 global EditButton := ""
@@ -151,18 +125,19 @@ global EditorButton := ""
 global ScriptDirButton := ""
 global AddToBootupFolderButton := ""
 global AlwaysOnTopButton := ""
-global AlwaysOnTopActive := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "AlwaysOnTop", false, "bool")
+global AlwaysOnTopActive := RegRead(RegKeyPath, "AlwaysOnTop", false)
 
 ; Extra Menus
 global PatchUI := ""
 global WindowSettingsUI := ""
 global ScriptSettingsUI := ""
 global SettingsUI := ""
-global MouseSpeed := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseSpeed", 1, "int")
-global MouseClickRateOffset := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseClickRateOffset", 0, "int")
-global MouseClickRadius := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseClickRadius", 0, "int")
-global doMouseLock := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "doMouseLock", false, "bool")
-global MouseClicks := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseClicks", 5, "int")
+global MouseSpeed := RegRead(RegKeyPath, "MouseSpeed", 0)
+global MouseClickRateOffset := RegRead(RegKeyPath, "ClickRateOffset", 0)
+global MouseClickRadius := RegRead(RegKeyPath, "ClickRadius", 0)
+global doMouseLock := RegRead(RegKeyPath, "doMouseLock", false)
+global MouseClicks := RegRead(RegKeyPath, "MouseClicks", 5)
+global SelectedProcessExe := RegRead(RegKeyPath, "SelectedProcessExe", "RobloxPlayerBeta.exe")
 
 ; Extras Menu
 global ShowingExtrasUI := false 
@@ -171,24 +146,20 @@ global warningRequested := false
 ; Light/Dark mode colors
 global updateTheme := true
 
-; global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
-global intWindowColor := "404040"
-global intControlColor := "606060"
-global intProgressBarColor := "757575"
-global ControlTextColor := "FFFFFF"
-global linkColor := "99c3ff"
-global currentTheme := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SelectedTheme", "DarkMode")
+global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
+global intWindowColor := (!blnLightMode and updateTheme) and "404040" or "EEEEEE"
+global intControlColor := (!blnLightMode and updateTheme) and "606060" or "FFFFFF"
+global intProgressBarColor := (!blnLightMode and updateTheme) and "757575" or "dddddd"
+global ControlTextColor := (!blnLightMode and updateTheme) and "FFFFFF" or "000000"
+global linkColor := (!blnLightMode and updateTheme) and "99c3ff" or "4787e7"
+global currentTheme := RegRead(RegKeyPath, "SelectedTheme", "DarkMode")
 global lastTheme := currentTheme
 
 global wasActiveWindow := false
 
-global buttonFontSize := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontSize", "12", "int")
-global buttonFontWeight := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontWeight", "550", "int")
-global buttonFont := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontStyle", "Consolas")
-
 global ControlResize := (Target, position, size) => ResizeMethod(Target, position, size)
 global MoveControl := (Target, position, size) => MoveMethod(Target, position, size)
-global AcceptedWarning := readIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", false, "bool") and CreateGui() or createWarningUI()
+global AcceptedWarning := RegRead(RegKeyPath, "AcceptedWarning", false) and CreateGui() or createWarningUI()
 global tempUpdateFile := ""
 
 ; ================= Screen Info =================== ;
@@ -199,7 +170,7 @@ global Credits_TargetColor := GetRandomColor(200, 255)
 global Credits_ColorChangeRate := 5 ; (higher = faster)
 
 ; Keys
-global KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
+global KeyToSend := RegRead(RegKeyPath, "KeyToSend", "LButton")
 
 OnExit(EndScriptProcess)
 
@@ -215,16 +186,15 @@ MenuHandler(ItemName, ItemPos, MyMenu) {
 	global MainUI_PosX
 	global MainUI_PosY
 	global isUIHidden
-	global SelectedProcessExe
 
 	local VDisplay_Width := SysGet(78) ; SM_CXVIRTUALSCREEN
 	local VDisplay_Height := SysGet(79) ; SM_CYVIRTUALSCREEN
 
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", MainUI_PosX)
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", MainUI_PosY)
+	RegWrite(VDisplay_Width / 2, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+	RegWrite(VDisplay_Height / 2, "REG_DWORD", RegKeyPath, "MainUI_PosY")
 
-	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2, "int")
-	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2, "int")
+	MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", VDisplay_Width / 2)
+	MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", VDisplay_Height / 2)
 
 	if isUIHidden
 		ToggleHideUI(!isUIHidden)
@@ -321,13 +291,12 @@ UpdateScript(targetFile := tempUpdateFile) {
 
 createWarningUI(requested := false) {
 	global ExtrasUI
-	global ProfilesDir
 	if ExtrasUI {
 		ExtrasUI.Destroy()
 		ExtrasUI := ""
 	}
 
-	local accepted := readIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", false, "bool")
+	local accepted := RegRead(RegKeyPath, "AcceptedWarning", false)
 	if accepted and not requested {
 		if MainUI_Warning
 			MainUI_Warning.Destroy()
@@ -338,13 +307,15 @@ createWarningUI(requested := false) {
 	}
 
 	; Global Variables
+	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
+
 	global AlwaysOnTopActive
 	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
 
 	global ExtrasUI
 	global MainUI_Warning := Gui(AOTStatus)
-	UpdateGuiIcon(icons[4].Icon)
+
 	MainUI_Warning.BackColor := intWindowColor
 
 	; Local Variables
@@ -352,6 +323,7 @@ createWarningUI(requested := false) {
 	local UI_Height_Warning := "100"
 
 	; Colors
+	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
 	global intWindowColor
 	global intControlColor
 	global intProgressBarColor
@@ -449,8 +421,8 @@ createWarningUI(requested := false) {
 			ExtrasUI.Opt("-Disabled")
 
 		if not accepted and clickedYes {
-			updateIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", true)
-			accepted := readIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", false, "bool")
+			RegWrite(true, "REG_DWORD", RegKeyPath, "AcceptedWarning")
+			accepted := RegRead(RegKeyPath, "AcceptedWarning", false)
 		}
 		
 		if not MainUI and accepted and clickedYes {
@@ -474,8 +446,10 @@ createWarningUI(requested := false) {
 
 CreateGui(*) {
 	global version
-	global UI_Width
-	global UI_Height
+	global UI_Width := "500"
+	global UI_Height := "300"
+	global Min_UI_Width := "500"
+	global Min_UI_Height := "300"
 	
 	global MainUI_PosX
 	global MainUI_PosY
@@ -515,6 +489,7 @@ CreateGui(*) {
 	global refreshRate
 
 	; Colors
+	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
 	global intWindowColor
 	global intControlColor
 	global intProgressBarColor
@@ -544,157 +519,70 @@ CreateGui(*) {
 	local UI_Margin_Width := UI_Width-MainUI.MarginX
 	local UI_Margin_Height := UI_Height-MainUI.MarginY
 	
-	global TipsDisplayed := []     ; Recently used indexes
-	global TipTimer := ""          ; Controls when a new tip is picked
-	global ScrollTimer := ""       ; Controls horizontal scroll updates
-	global TipScrollData := Map()  ; Keeps track of label & offset per GUI
-	global tipHeight := 20         ; Height of the tip box
-	global tips
-	
-	local dummy := MainUI.Add("Text", "Section w" UI_Margin_Width " h" tipHeight " 0x200 BackgroundTrans")  ; dummy container
-	
-	AddTipBox() {
-		tipBox := MainUI.Add("Text", "w" UI_Margin_Width " h" tipHeight " BackgroundTrans vTipBox", "")
-		tipBox.SetFont("s" tipHeight/2 " w550 Italic", "Consolas")
-	
-		TipScrollData[MainUI] := Map(
-			"Ctrl", tipBox,
-			"Offset", 10,
-			"CurrentText", "",
-			"TipList", tips,  ; ← Uses dynamic global list
-			"LastIndexes", []
-		)
-	
-		LoadNewTip()
-	}
-
-	LoadTipsFromAHKFile() {
-		global tips := []
-	
-		local file := A_LocalAppData "\JACS\tips.ahk"
-		if !FileExist(file)
-			return
-	
-		local text := FileRead(file)
-		local m := "", tipMatch := ""
-	
-		; Try to find the tips := [ ... ] block
-		if RegExMatch(text, "s)tips\s*:=\s*\[\s*(.*?)\s*\]", &m) {
-			rawList := m[1]  ; capture group 1 — the content inside [ ... ]
-			lines := StrSplit(rawList, "`n", "`r")
-			for line in lines {
-				line := Trim(line)
-				; Match quoted string tips like "Tip here",
-				if RegExMatch(line, 's)^`"(.*?)`"', &tipMatch)
-					tips.Push(tipMatch[1])
-			}
-		}
-	}	
-	
-	UpdateTipsFile(*) {
-		url := "https://raw.githubusercontent.com/WoahItsJeebus/JACS/main/Utilities/InfoBarMap.ahk"
-		localPath := A_LocalAppData "\JACS\tips.ahk"
-		try {
-			DownloadURL(url, localPath)
-			LoadTipsFromAHKFile()
-			UpdateAllTipBoxes()
-		} catch as e {
-			LoadTipsFromAHKFile()
-			UpdateAllTipBoxes()
-		}
-	}
-	
-	UpdateAllTipBoxes() {
-		global TipScrollData, tips
-	
-		for hwnd, data in TipScrollData {
-			data["TipList"] := tips
-			data["LastIndexes"] := []
-		}
-	}
-	
-	LoadNewTip() {
-		global initializing
-		if initializing
-			return
-		UpdateTipsFile()
-		global tips, tipHeight
-		data := TipScrollData[MainUI]
-		
-		tips := data["TipList"]
-		lastIndexes := data["LastIndexes"]
-		
-		if tips.Length = 0 {
-			data["Ctrl"].Text := "No tips available."
-			data["CurrentText"] := "No tips available."
-			data["Offset"] := UI_Width + 100
-			
-			width := MeasureTextWidth(data["Ctrl"], "No tips available.")
-			data["Ctrl"].Move(UI_Width + 100,10, width, tipHeight)
-			return
-		}
-
-		maxHistory := Max(1, Round(tips.Length * 0.33))
-		candidates := []
-	
-		for index, tip in tips {
-			if !ArrayHasValue(lastIndexes, tip)
-				candidates.Push({index: index, tip: tip})
-		}
-		
-		if candidates.Length = 0 {
-			lastIndexes := []
-			for index, tip in tips
-				candidates.Push({index: index, tip: tip})
-		}
-		
-		; Pick a random tip from candidates that wasn't used recently
-		pickRandomCandidate() {
-			; 
-		}
-		choice := candidates[Random(1, candidates.Length)]
-		text := choice.tip
-		
-		data["Ctrl"].Text := text
-		data["CurrentText"] := text
-		data["Offset"] := UI_Width + 100
-		
-		width := MeasureTextWidth(data["Ctrl"], text)
-		data["Ctrl"].Move(UI_Width + 100,10, width, tipHeight)
-
-		lastIndexes.Push(choice.tip)
-		if lastIndexes.Length > maxHistory
-			lastIndexes.RemoveAt(1)
-		data["LastIndexes"] := lastIndexes
-	}
-	
-	ScrollTip() {
-		global initializing
-		if initializing
-			return
-
-		data := TipScrollData[MainUI]
-		ctrl := data["Ctrl"]
-		text := data["CurrentText"]
-		offset := data["Offset"]
-
-		; Move leftward
-		offset -= 1
-		ctrl.Move(offset, , ,)
-
-		; When it fully scrolls off screen, reset position
-
-		if offset < -(UI_Width) - 100 {
-			Sleep(Random(30000, 90000))
-			return LoadNewTip()
-		}
-		else
-			data["Offset"] := offset
-	}
-	
-	createMainButtons()
 	createSideBar()
+	createMainButtons()
 
+	; Create the main buttons and controls
+	createMainButtons(*) {
+		local Header := MainUI.Add("Text", "x+m y+-360 Section Center vMainHeader cff4840 h100 w" UI_Margin_Width,"`nJeebus' Auto-Clicker — V" version)
+		Header.SetFont("s22 w600", "Ink Free")
+		
+		; ########################
+		; 		  Buttons
+		; ########################
+		; local activeText_Core := isActive and "Enabled" or "Disabled"
+		global activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
+		CoreToggleButton := MainUI.Add("Button", "xs h40 w" UI_Margin_Width/1.4, "Auto-Clicker: " activeText_Core)
+		CoreToggleButton.OnEvent("Click", ToggleCore)
+		CoreToggleButton.Opt("Background" intWindowColor)
+		CoreToggleButton.Move((UI_Width-(UI_Margin_Width / 1.333)))
+		CoreToggleButton.SetFont("s12 w500", "Consolas")
+
+		; ##############################
+		
+		; Calculate initial control width based on GUI width and margins
+		InitialWidth := UI_Width - (2 * UI_Margin_Width)
+		;X := 0, Y := 0, UI_Width := 0, UI_Height := 0
+		
+		; Get the client area dimensions
+		NewButtonWidth := (UI_Width - (2 * UI_Margin_Width)) / 3
+		
+		local pixelSpacing := 5
+
+		; ###############################
+		
+		SeparationLine := MainUI.Add("Text", "xs 0x7 h1 w" UI_Margin_Width) ; Separation Space
+		SeparationLine.BackColor := "0x8"
+		
+		; Progress Bar
+		WaitTimerLabel := MainUI.Add("Text", "xs Section Center 0x300 0xC00 h28 w" UI_Margin_Width, "0%")
+		WaitProgress := MainUI.Add("Progress", "xs Section Center h50 w" UI_Margin_Width)
+		ElapsedTimeLabel := MainUI.Add("Text", "xs Section Center 0x300 0xC00 h28 w" UI_Margin_Width, "00:00 / 0 min")
+		ElapsedTimeLabel.SetFont("s18 w500", "Consolas")
+		WaitTimerLabel.SetFont("s18 w500", "Consolas")
+		
+		WaitTimerLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+		ElapsedTimeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+		WaitProgress.Opt("Background" intProgressBarColor)
+
+		; Reset Cooldown
+		ResetCooldownButton := MainUI.Add("Button", "xs+182 h30 w" UI_Margin_Width/4, "Reset")
+		ResetCooldownButton.OnEvent("Click", ResetCooldown)
+		ResetCooldownButton.SetFont("s12 w500", "Consolas")
+		ResetCooldownButton.Opt("Background" intWindowColor)
+			
+		; Credits
+		CreditsLink := MainUI.Add("Link", "xs c" linkColor . " Section Left h20 w" UI_Margin_Width/2, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
+		CreditsLink.SetFont("s12 w700", "Ink Free")
+		CreditsLink.Opt("c" linkColor)
+		LinkUseDefaultColor(CreditsLink)
+
+		; Version
+		; OpenExtrasLabel := MainUI.Add("Button", "x+120 Section Center 0x300 0xC00 h30 w" UI_Margin_Width/4, "Extras")
+		; OpenExtrasLabel.SetFont("s12 w500", "Consolas")
+		; OpenExtrasLabel.Opt("Background" intWindowColor)
+		; OpenExtrasLabel.OnEvent("Click", CreateExtrasGUI)
+	}
 	; LinkUseDefaultColor(VersionHyperlink)
 	
 	; Update ElapsedTimeLabel with the formatted time and total wait time in minutes
@@ -705,7 +593,6 @@ CreateGui(*) {
 	; ###################################################################### ;
 	
 	; ToggleHideUI(false)
-	refreshRate := GetRefreshRate_Alt() or 60
 	updateUIVisibility()
 	ClampMainUIPos()
 	SaveMainUIPosition()
@@ -741,132 +628,56 @@ CreateGui(*) {
 		"ClampMainUIPosition", Map(
 			"Function", ClampMainUIPos.Bind(),
 			"Interval", 50,
-			"Disabled", true
+			"Disabled", false
 		),
 		"ColorizeCredits", Map(
 			"Function", ColorizeCredits.Bind(CreditsLink),
 			"Interval", 50,
 			"Disabled", true
-		),
-		"ScrollTip", Map(
-			"Function", ScrollTip.Bind(),
-			"Interval", refreshRate * 0.215,
-			"Disabled", false
-		),
+		)
 	)
 	
 	
 	; ApplyThemeToGui(MainUI, DarkTheme)
-	setTrayIcon(icons[isActive].Icon)
-
 	CheckDeviceTheme()
-	AddTipBox()
+	setTrayIcon(icons[isActive].Icon)
+	Sleep(500)
 
 	; Run loop functions
 	for FuncName, Data in loopFunctions
-		if not Data["Disabled"] {
-			if FuncName == "ScrollTip"
-				Sleep(100)
-			SetTimer(Data["Function"], Data["Interval"])
-		}
-	
+		if not Data["Disabled"]
+        	SetTimer(Data["Function"], Data["Interval"])
+
+	refreshRate := GetRefreshRate_Alt()
 	; debugNotif(refreshRate = 0 ? "Failed to retrieve refresh rate" : "Refresh Rate: " refreshRate " Hz",,,5)
-	
+
 	initializing := false
 }
 
-; Create the main buttons and controls
-createMainButtons(*) {
-	global MainUI, intWindowColor, intControlColor, ControlTextColor, linkColor, ProfilesDir
-	global UI_Width, UI_Height, ICON_WIDTH, ICON_SPACING, BUTTON_HEIGHT, HeaderHeight
-	local UI_Margin_Width := UI_Width-MainUI.MarginX
-	local UI_Margin_Height := UI_Height-MainUI.MarginY
-
-	local Header := MainUI.Add("Text","x" ICON_WIDTH " y+" UI_Height*0.001 " Section Center vMainHeader cff4840 h" HeaderHeight " w" UI_Width,"Jeebus' Auto-Clicker — V" version)
-	Header.SetFont("s18 w600", "Ink Free")
-
-	; ########################
-	; 		  Buttons
-	; ########################
-	; local activeText_Core := isActive and "Enabled" or "Disabled"
-	global activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
-	global CoreToggleButton := MainUI.Add("Button", "xs+" ICON_WIDTH + UI_Width/6 " h30 w" (UI_Margin_Width*0.75)-ICON_WIDTH, "Auto-Clicker: " activeText_Core)
-	CoreToggleButton.OnEvent("Click", ToggleCore)
-	CoreToggleButton.Opt("Background" intWindowColor)
-	; CoreToggleButton.Move(UI_Width-((UI_Margin_Width * 0.6) + ICON_WIDTH))
-	CoreToggleButton.SetFont("s12 w500", "Consolas")
-
-	; ##############################
-	
-	; Calculate initial control width based on GUI width and margins
-	InitialWidth := UI_Width - (2 * UI_Margin_Width)
-	;X := 0, Y := 0, UI_Width := 0, UI_Height := 0
-	
-	; Get the client area dimensions
-	NewButtonWidth := (UI_Width - (2 * UI_Margin_Width)) / 3
-	
-	local pixelSpacing := 5
-
-	; ###############################
-	
-	; Reset Cooldown
-	global ResetCooldownButton := MainUI.Add("Button", "x" (ICON_WIDTH*2) + UI_Margin_Width*0.375 " h30 w" UI_Margin_Width/4, "Reset")
-	ResetCooldownButton.OnEvent("Click", ResetCooldown)
-	ResetCooldownButton.SetFont("s12 w500", "Consolas")
-	ResetCooldownButton.Opt("Background" intWindowColor)
-
-	SeparationLine := MainUI.Add("Text", "x" ICON_WIDTH*2 " 0x7 h1 w" UI_Margin_Width) ; Separation Space
-	SeparationLine.BackColor := "0x8"
-	
-	; Progress Bar
-	global WaitTimerLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " Center 0x300 0xC00 h20 w" UI_Margin_Width, "0%")
-	global WaitProgress := MainUI.Add("Progress", "x" ICON_WIDTH*2 " Center h40 w" UI_Margin_Width)
-	global ElapsedTimeLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " Center 0x300 0xC00 h20 w" UI_Margin_Width, "00:00 / 0 min")
-	ElapsedTimeLabel.SetFont("s18 w500", "Consolas")
-	WaitTimerLabel.SetFont("s18 w500", "Consolas")
-	
-	WaitTimerLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-	ElapsedTimeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-	WaitProgress.Opt("Background" intProgressBarColor)
-
-	; Credits
-	global CreditsLink := MainUI.Add("Link","c" linkColor . " Left h20 w" UI_Margin_Width, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
-	CreditsLink.SetFont("s12 w700", "Ink Free")
-	CreditsLink.Opt("c" linkColor)
-	; Move credits link to bottom of UI_Height
-	CreditsLink.Move(ICON_WIDTH*2, UI_Height + (MainUI.MarginY - 20))
-	LinkUseDefaultColor(CreditsLink)
-
-	; Version
-	; OpenExtrasLabel := MainUI.Add("Button", "x+120 Section Center 0x300 0xC00 h30 w" UI_Margin_Width/4, "Extras")
-	; OpenExtrasLabel.SetFont("s12 w500", "Consolas")
-	; OpenExtrasLabel.Opt("Background" intWindowColor)
-	; OpenExtrasLabel.OnEvent("Click", CreateExtrasGUI)
-}
-
+; Create the sidebar tab list
 createSideBar(*) {
-	global MainUI, intWindowColor, UI_Height, ProfilesDir
+	global MainUI, intWindowColor, UI_Height
 
-	global ICON_SPACING, ICON_WIDTH, BUTTON_HEIGHT, HeaderHeight, tipHeight
+	ICON_SPACING  := 50
+	ICON_WIDTH    := 50
+	BUTTON_HEIGHT := 40
 
 	if not MainUI
 		return
 
 	; Sidebar background
-	local sidebarBackground := MainUI.Add("Text","Section vSideBarBackground w" ICON_WIDTH " h" UI_Height-HeaderHeight-tipHeight " Background" intWindowColor)
-	
+	MainUI.Add("Text", "x0 y0 w" ICON_WIDTH " h" UI_Height * 1.25 " Background" intWindowColor)
+
 	; Store buttons and tooltip data for hover tracking
 	global iconButtons := []
 
 	for idx, icon in sidebarData {
-		y := ((idx - 1) * (BUTTON_HEIGHT + ICON_SPACING)) + ICON_SPACING + HeaderHeight + tipHeight + 10
-		btn := MainUI.Add("Button", "xs-" ICON_WIDTH*1.5 " y" y " vIconButton" . idx . " w" ICON_WIDTH " h" BUTTON_HEIGHT " Background" intWindowColor, icon.Icon)
+		y := ((idx - 1) * (BUTTON_HEIGHT + ICON_SPACING)) + ICON_SPACING
+		btn := MainUI.Add("Button", "x10 y" y " w" ICON_WIDTH " h" BUTTON_HEIGHT " Background" intWindowColor, icon.Icon)
 		
 		btn.OnEvent("Click", icon.Function)  ; Assign specific function
 		iconButtons.Push({control: btn, tooltip: icon.Tooltip})
 	}
-
-	sidebarBackground.Visible := false
 
 	; Tooltip hover tracker
 	global currentTooltipIndex := 0
@@ -874,7 +685,7 @@ createSideBar(*) {
 }
 
 CheckSidebarHover() {
-	global iconButtons, currentTooltipIndex, ProfilesDir
+	global iconButtons, currentTooltipIndex
 
 	MouseGetPos &mx, &my, &winHwnd, &ctrlHwnd, 2
 
@@ -899,8 +710,7 @@ ClampMainUIPos(*) {
 	global isUIHidden
 	global MainUI_PosX
 	global MainUI_PosY
-	global ProfilesDir
-
+	
 	local VDisplay_Width := SysGet(78) ; SM_CXVIRTUALSCREEN
 	local VDisplay_Height := SysGet(79) ; SM_CYVIRTUALSCREEN
 	
@@ -912,16 +722,16 @@ ClampMainUIPos(*) {
 		return
 
 	if X > VDisplay_Width or X < -VDisplay_Width {
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2)
-		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2, "int")
+		RegWrite(VDisplay_Width / 2, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+		MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", VDisplay_Width / 2)
 		
 		if MainUI and not isUIHidden and winState != -1
 			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
 	}
 
 	if Y > VDisplay_Height or Y < (-VDisplay_Height*2) {
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2)
-		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2, "int")
+		RegWrite(VDisplay_Height / 2, "REG_DWORD", RegKeyPath, "MainUI_PosY")
+		MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", VDisplay_Height / 2)
 
 		if MainUI and winState != -1
 			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
@@ -953,13 +763,11 @@ CheckOpenMenus(*) {
 
 CreateWindowSettingsGUI(*) {
 	; UI Settings
-	global buttonFontSize, buttonFontWeight, buttonFont, buttonHeight
 	local PixelOffset := 10
-	local Popout_Width := 320
-	local Popout_Height := 400
+	local Popout_Width := 400
+	local Popout_Height := 600
 	local labelOffset := 50
 	local sliderOffset := 2.5
-	
 
 	; Global Save Data
 	global WindowSettingsUI
@@ -974,7 +782,8 @@ CreateWindowSettingsGUI(*) {
 	global MainUI_PosX
 	global MainUI_PosY
 	global currentHotkey
-	global ProfilesDir
+	global RegKeyPath
+
 	; local HotkeyLabel := ""
 	; local HotkeyButton := ""
 
@@ -984,28 +793,22 @@ CreateWindowSettingsGUI(*) {
 	local ProcessDropdown := ""
 	local themeDropdown := ""
 	local themeLabel := ""
-	local editTheme := ""
-	local ProcessLabel := ""
-	local DescriptionBox := ""
 
 	; Colors
-	global currentTheme := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SelectedTheme", "Default", "str")
+	global currentTheme := RegRead(RegKeyPath, "SelectedTheme", "DarkMode")
+	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
 	global intWindowColor
 	global intControlColor
 	global ControlTextColor
 
-	local Popout_MarginX := 10
-	local Popout_MarginY := 10
-
-	CloseSettingsUI(*) {
-		SetTimer(mouseHoverDescription,0)
-		
+	CloseSettingsUI(*)
+	{
 		if WindowSettingsUI {
 			WindowSettingsUI.Destroy()
 			WindowSettingsUI := ""
 		}
 
-		WinActivate(MainUI.Title)
+		SetTimer(mouseHoverDescription,0)
 	}
 
 	; If settingsUI is open, close it
@@ -1018,33 +821,41 @@ CreateWindowSettingsGUI(*) {
 	WindowSettingsUI.BackColor := intWindowColor
 	WindowSettingsUI.OnEvent("Close", CloseSettingsUI)
 	WindowSettingsUI.Title := "Window Settings"
-	WindowSettingsUI.MarginX := Popout_MarginX
-	local activeText_Sound := (playSounds == 1 and "All") or (playSounds == 2 and "Less") or (playSounds == 3 and "None")
-	local themeNames := GetThemeListFromINI(localScriptDir "\themes.ini")
-
+	
 	if AlwaysOnTopButton
 		AlwaysOnTopButton := ""
+
+	AlwaysOnTopButton := WindowSettingsUI.Add("Button", "Section Center vAlwaysOnTopButton h30 w" Popout_Width/1.05, "Always-On-Top: " AOT_Text)
+	AlwaysOnTopButton.OnEvent("Click", ToggleAOT)
+	AlwaysOnTopButton.Opt("Background" intWindowColor)
+	AlwaysOnTopButton.SetFont("s12 w500", "Consolas")
+
+	local activeText_Sound := (playSounds == 1 and "All") or (playSounds == 2 and "Less") or (playSounds == 3 and "None")
 	
 	if SoundToggleButton
 		SoundToggleButton := ""
 
-	local Popout_Margin_Width := Popout_Width-(WindowSettingsUI.MarginX*2)
-	local Popout_Margin_Height := Popout_Height-(WindowSettingsUI.MarginY*2)
+	SoundToggleButton := WindowSettingsUI.Add("Button", "xm Section Center vSoundToggleButton h30 w" Popout_Width/1.05, "Sounds: " activeText_Sound)
+	SoundToggleButton.OnEvent("Click", ToggleSound)
+	SoundToggleButton.Opt("Background" intWindowColor)
+	SoundToggleButton.SetFont("s12 w500", "Consolas")
 
-	AlwaysOnTopButton := WindowSettingsUI.Add("Button", "Section Center vAlwaysOnTopButton h" buttonHeight " w" Popout_Margin_Width, "Always-On-Top: " AOT_Text)
-	SoundToggleButton := WindowSettingsUI.Add("Button", "xm Section Center vSoundToggleButton h" buttonHeight " w" Popout_Margin_Width, "Sounds: " activeText_Sound)
-	themeLabel := WindowSettingsUI.Add("Text", "xm Left vThemeLabel h" buttonHeight*0.95 " w" Popout_Margin_Width, "Theme: " . currentTheme)
-	themeDropdown := WindowSettingsUI.Add("DropDownList", "Section xm R10 vThemeChoice h" buttonHeight " w" (Popout_Margin_Width*0.75) - buttonHeight-6, themeNames)
-	editTheme := WindowSettingsUI.Add("Button","x+1 y+-22 Center vEditThemeButton h" buttonHeight+6 " w" Popout_Margin_Width*0.25, "Edit Theme")
-	refreshTheme := WindowSettingsUI.Add("Button", "x+1 Center vRefreshThemeButton h" buttonHeight+6 " w" buttonHeight+6, "🔄")
-	ProcessLabel := WindowSettingsUI.Add("Text", "xm Left h" buttonHeight " vProcessLabel w" Popout_Margin_Width, "Searching for: " SelectedProcessExe)
-	ProcessDropdown := WindowSettingsUI.Add("DropDownList", "xm y+0 R10 Center vProcessDropdown h" buttonHeight " w" Popout_Margin_Width, [SelectedProcessExe])
+	; HotkeyLabel := WindowSettingsUI.Add("Text", "xm Center vHotkeyLabel h20 w" Popout_Width/1.05, "Hide Menu: " . (currentHotkey ? currentHotkey : "Alt+Backspace"))
+	; HotkeyButton := WindowSettingsUI.Add("Button", "xm Center vHotkeyButton h30 w" Popout_Width/1.05, "Set Toggle Key")
+	; HotkeyButton.Opt("Background" intWindowColor . " c" ControlTextColor)
+	; HotkeyLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+	; HotkeyLabel.SetFont("s12 w500", "Consolas")
+	; HotkeyButton.SetFont("s12 w500", "Consolas")
+	; HotkeyButton.OnEvent("Click", (*) => (
+	; 	HotkeyLabel.Text := WaitForKeyPress(WindowSettingsUI)
+	; ))
 
-	local groupPadding := 20
-	descriptionGroup := WindowSettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" 0 " w" Popout_Margin_Width, "")
-	DescriptionBoxBG := WindowSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . (0) . " w" Popout_Margin_Width - groupPadding)
-	DescriptionBox := WindowSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . (0) . " w" Popout_Margin_Width - groupPadding)
+	themeLabel := WindowSettingsUI.Add("Text", "xm Center vThemeLabel h20 w" Popout_Width/1.05, "Theme: " . currentTheme)
+	themeLabel.SetFont("s12 w500", "Consolas")
+	themeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 
+	themeNames := GetThemeListFromINI(localScriptDir "\themes.ini")
+	themeDropdown := WindowSettingsUI.Add("DropDownList", "xm R10 vThemeChoice h40 w" Popout_Width/1.05, themeNames)
 	; Get index of the current theme name
 	for index, name in themeNames {
 		if (name = currentTheme) {
@@ -1052,84 +863,27 @@ CreateWindowSettingsGUI(*) {
 			break
 		}
 	}
-	
-	; ################################# ;
-	; Slider Description Box
-	local ThemeMap := LoadThemeFromINI(currentTheme)
-	
-	descriptionGroup.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBoxBG.Opt("Background" intWindowColor . " c" ControlTextColor)
-	AlwaysOnTopButton.Opt("Background" intWindowColor)
-	SoundToggleButton.Opt("Background" intWindowColor)
-	themeLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-	editTheme.Opt("Background" intWindowColor . " c" ControlTextColor)
-	refreshTheme.Opt("Background" intWindowColor . " c" ControlTextColor)
-	ProcessLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBox.Opt("BackgroundTrans" . " c" ControlTextColor)
 
-	descriptionGroup.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	AlwaysOnTopButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	SoundToggleButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	themeLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	editTheme.SetFont("s" buttonFontSize*0.7 " w" buttonFontWeight, buttonFont)
-	refreshTheme.SetFont("s" 16 " w" 550, buttonFont)
-	themeDropdown.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ProcessLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ProcessDropdown.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	DescriptionBox.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-
-	AlwaysOnTopButton.OnEvent("Click", ToggleAOT)
-	SoundToggleButton.OnEvent("Click", ToggleSound)
-	editTheme.OnEvent("Click", processThemeEdit)
-	refreshTheme.OnEvent("Click", CheckDeviceTheme)
 	themeDropdown.OnEvent("Change", OnThemeDropdownChange)
-	ProcessDropdown.OnEvent("Change", OnProcessDropdownChange)
+	themeDropdown.SetFont("s12 w500", "Consolas")
 
-	ProcessDropdown.Choose(1)
-	PopulateProcessDropdown(ProcessDropdown)
-
-	; Hover Descriptions
-	local Descriptions := Map(
-		; Sliders
-		"AlwaysOnTopButton", "This button controls whether the script's UI stays as the top-most window on the screen.",
-		"SoundToggleButton", "This button controls the sounds that play when the auto-clicker sequence triggers, when no target window is found, etc.`n`nAll: All sounds play. This includes a 3 second countdown via audible beeps, a higher pitched trigger tone indicating the sequence has begun after the aforementioned countdown, and an audible indication the script launched.`n`nLess: Only the single higher pitched indicator and indicator on script launch are played.`n`nNone: No indication sounds are played.",
-		"ProcessDropdown", "Pick a process from this dropdown list and the script will look for the first active process matching the name of the one selected.",
-		"ThemeLabel", "This dropdown allows you to select a theme from the list of themes available in the themes.ini file. The selected theme will be applied to all user interfaces.",
-		"ThemeChoice", "This dropdown allows you to select a theme from the list of themes available in the themes.ini file. The selected theme will be applied to all user interfaces.",
-		"EditThemeButton", "This button opens the themes.ini file in your default text editor. You can edit, add, or remove any theme settings here.",
-	)
-	Descriptions["ProcessLabel"] := Descriptions["ProcessDropdown"]
-	
-	processThemeEdit(*) {
-		if FileExist(localScriptDir "\themes.ini")
-			Run(localScriptDir "\themes.ini")
-		else
-			SendNotification("themes.ini not found!", Map(
-				"Title", "JACS - Error",
-				"Timeout", 5000,
-				"Type", "Info",
-			),)
-	}
-	
 	OnThemeDropdownChange(*) {
-		global ProfilesDir
 		selectedTheme := themeDropdown.Text
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SelectedTheme", selectedTheme)
+		RegWrite(selectedTheme, "REG_SZ", RegKeyPath, "SelectedTheme")
 		currentTheme := selectedTheme
 		themeLabel.Text := "Theme: " . selectedTheme
 
 		updateGlobalThemeVariables(selectedTheme)
-		CheckDeviceTheme()
-		; updateGUITheme(WindowSettingsUI)
-		; updateGUITheme(MainUI)
+		updateGUITheme(WindowSettingsUI)
+		updateGUITheme(MainUI)
 	}
 	
 	OnProcessDropdownChange(*) {
 		local selectedExe := ProcessDropdown.Text  ; get the selected process name
 		ProcessLabel.Text := "Searching for: " . selectedExe
 		
-		SetSelectedProcessName(selectedExe)
-		loadProfileSettings(selectedExe)
+		RegWrite(selectedExe, "REG_SZ", RegKeyPath, "SelectedProcessExe")
+		SelectedProcessExe := RegRead(RegKeyPath, "SelectedProcessExe", "RobloxPlayerBeta.exe")
 	}
 
 	PopulateProcessDropdown(*) {
@@ -1155,24 +909,55 @@ CreateWindowSettingsGUI(*) {
 			}
 		}
 	}
-
-	updateDescriptionBox(newText := "") {
-		if newText == DescriptionBox.Text
-			return
-
-		ControlGetPos(&groupX, &groupY, &groupW, &groupH, descriptionGroup)
-		DescriptionBox.Text := newText
-
-		local textWidth := MeasureTextWidth(DescriptionBox, newText)
-		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
-
-		descriptionGroup.Move(,,, textHeight+(groupPadding*2))
-		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2))
-		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
-		
-		WindowSettingsUI.Show("AutoSize")
+	
+	IsWindowVisibleToUser(hWnd) {
+		; Ensure it's a number and not null
+		if !IsInteger(hWnd) || hWnd = 0
+			return false
+	
+		; Ensure the HWND exists and is a real window
+		if !DllCall("IsWindow", "ptr", hWnd)
+			return false
+	
+		; Check visibility
+		return DllCall("IsWindowVisible", "ptr", hWnd, "int")
 	}
 	
+	; Add a label to display the currently selected process
+    local ProcessLabel := WindowSettingsUI.Add("Text", "xs y+30 Center h40 vProcessLabel w" Popout_Width/1.05, "Searching for: " SelectedProcessExe)
+    ProcessLabel.SetFont("s12", "Consolas")
+	ProcessLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+    ; Add a dropdown list (ComboBox) for selecting a process
+    ProcessDropdown := WindowSettingsUI.Add("DropDownList", "xm y+-20 R10 Center vProcessDropdown w" Popout_Width/1.05, [SelectedProcessExe])
+    ProcessDropdown.SetFont("s12", "Consolas")
+	ProcessDropdown.Choose(1)
+	ProcessDropdown.OnEvent("Change", OnProcessDropdownChange)
+
+	PopulateProcessDropdown(ProcessDropdown)
+
+	; ################################# ;
+	; Slider Description Box
+	local testBoxColor := "666666"
+	DescriptionBox := WindowSettingsUI.Add("Text", "xm y+15 Section Left vDescriptionBox h" . Popout_Height/2 . " w" Popout_Width/1.05)
+	DescriptionBox.SetFont("s10 w700", "Consolas")
+	DescriptionBox.Opt("+Border Background" (testBoxColor or intWindowColor) . " c" ControlTextColor)
+	
+	; Hover Descriptions
+	local Descriptions := Map(
+		; Sliders
+		"AlwaysOnTopButton", "This button controls whether the script's UI stays as the top-most window on the screen.",
+		"SoundToggleButton", "This button controls the sounds that play when the auto-clicker sequence triggers, when no target window is found, etc.`n`nAll: All sounds play. This includes a 3 second countdown via audible beeps, a higher pitched trigger tone indicating the sequence has begun after the aforementioned countdown, and an audible indication the script launched.`n`nLess: Only the single higher pitched indicator and indicator on script launch are played.`n`nNone: No indication sounds are played.",
+		"ProcessDropdown", "Pick a process from this dropdown list and the script will look for the first active process matching the name of the one selected.",
+		"ThemeLabel", "This dropdown allows you to select a theme from the list of themes available in the themes.ini file. The selected theme will be applied to all user interfaces.",
+		"ThemeChoice", "This dropdown allows you to select a theme from the list of themes available in the themes.ini file. The selected theme will be applied to all user interfaces.",
+	)
+	Descriptions["ProcessLabel"] := Descriptions["ProcessDropdown"]
+	
+	updateDescriptionBox(newText := "") {
+		DescriptionBox.Text := newText
+	}
+
 	mouseHoverDescription(*)
 	{
 		if not WindowSettingsUI or not DescriptionBox
@@ -1181,10 +966,8 @@ CreateWindowSettingsGUI(*) {
 		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
 		local targetControl := ""
 
-		if HoverControl && HoverWindow && HoverWindow {
-			if HoverWindow != WindowSettingsUI.Hwnd
-				return
-
+		if HoverControl
+		{
 			try targetControl := WindowSettingsUI.__Item[HoverControl]
 			if WindowSettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
 				try updateDescriptionBox(Descriptions[targetControl.Name])
@@ -1194,13 +977,13 @@ CreateWindowSettingsGUI(*) {
 			}
 		}
 	}
+
 	; Calculate center position
 	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
-	CheckDeviceTheme()
-	updateDescriptionBox(" ")
+	updateGUITheme(WindowSettingsUI)
 	WindowSettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
 
 	SetTimer(mouseHoverDescription,50)
@@ -1212,12 +995,9 @@ CreateClickerSettingsGUI(*) {
 	local Popout_Width := 400
 	local Popout_Height := 600
 	local labelOffset := 50
-	local sliderOffset := 0
+	local sliderOffset := 2.5
 	local toggleStatus := doMouseLock and "Enabled" or "Disabled"
 	
-	global buttonFontSize, buttonFontWeight, buttonFont
-	local buttonHeight := 23
-
 	; Labels, Sliders, Buttons
 	local MouseSpeedLabel := ""
 	local MouseSpeedSlider := ""
@@ -1257,16 +1037,101 @@ CreateClickerSettingsGUI(*) {
 	local maxSpeed := 1000
 	local maxClicks := 10
 	local maxCooldown := 15*60
-	
+	local buddyWidth := 50
+	local sliderWidthCoefficient := 5
+
 	; Colors
-	global ProfilesDir
+	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
 	global intWindowColor
 	global intControlColor
 	global ControlTextColor
+	local testBoxColor := "666666"
+
+	CloseSettingsUI(*)
+	{
+		if SettingsUI
+		{
+			SettingsUI.Destroy()
+			SettingsUI := ""
+		}
+
+		SetTimer(mouseHoverDescription,0)
+	}
 
 	; If settingsUI is open, close it
 	if SettingsUI
 		return CloseSettingsUI()
+	
+	; Slider update function
+	updateSliderValues(ctrlObj, info) {
+		; MsgBox(ctrlObj.Name . ": " . info)
+		if ctrlObj.Name == "MouseSpeed" {
+			RegWrite(ctrlObj.Value, "REG_DWORD", RegKeyPath, "MouseSpeed")
+			MouseSpeed := RegRead(RegKeyPath, "MouseSpeed", 0)
+			
+			if MouseSpeedLabel
+				MouseSpeedLabel.Text := "Mouse Speed: " . (ctrlObj.Value >= 1000 ? Format("{:.2f} s", ctrlObj.Value / 1000) : ctrlObj.Value . " ms")
+		}
+
+		if ctrlObj.Name == "ClickRateOffset" {
+			RegWrite(ctrlObj.Value, "REG_DWORD", RegKeyPath, "ClickRateOffset")
+			MouseClickRateOffset := RegRead(RegKeyPath, "ClickRateOffset", 0)
+			
+			if ClickRateOffsetLabel
+				ClickRateOffsetLabel.Text := "Click Rate Offset: " . (ctrlObj.Value >= 1000 ? Format("{:.2f} s", ctrlObj.Value / 1000) : ctrlObj.Value . " ms")
+		}
+
+		if ctrlObj.Name == "ClickRadius" {
+			RegWrite(ctrlObj.Value, "REG_DWORD", RegKeyPath, "ClickRadius")
+			MouseClickRateOffset := RegRead(RegKeyPath, "ClickRadius", 0)
+			
+			if ClickRadiusLabel
+				ClickRadiusLabel.Text := "Click Radius: " . ctrlObj.Value . " pixels"
+		}
+
+		if ctrlObj.Name == "MouseClicks" {
+			RegWrite(ctrlObj.Value, "REG_DWORD", RegKeyPath, "MouseClicks")
+			MouseClicks := RegRead(RegKeyPath, "MouseClicks", 5)
+			
+			if MouseClicksLabel
+				MouseClicksLabel.Text := "Click Amount: " . ctrlObj.Value . " clicks"
+		}
+
+		if ctrlObj.Name == "CooldownSlider" {
+			local targetSeconds := (SecondsToWait > 0) and Round(Mod(SecondsToWait, 60),0) or 0
+			local targetFormattedTime := Format("{:02}:{:02}", MinutesToWait, targetSeconds)
+			local mins_suffix := SecondsToWait > 60 and " minutes" or SecondsToWait == 60 and " minute" or SecondsToWait < 60 and " seconds"
+	
+			RegWrite(ctrlObj.Value/60, "REG_DWORD", RegKeyPath, "Cooldown")
+			RegWrite(math.clamp(Round(ctrlObj.Value,2),(minCooldown > 0 and minCooldown/60) or 0,900),"REG_DWORD", RegKeyPath, "SecondsToWait")
+			MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
+			SecondsToWait := RegRead(RegKeyPath, "SecondsToWait",math.clamp(Round(ctrlObj.Value * 60,2),(minCooldown > 0 and minCooldown/60) or 0,900))
+			
+			if CooldownLabel
+				CooldownLabel.Text := "Cooldown: " targetFormattedTime . mins_suffix
+		}
+	}
+
+	; Toggle Function
+	updateToggle(ctrlObj, info) {
+		if ctrlObj.Name == "ToggleMouseLock" {
+			RegWrite(not doMouseLock, "REG_DWORD", RegKeyPath, "doMouseLock")
+			doMouseLock := RegRead(RegKeyPath, "doMouseLock", false)
+
+			local toggleStatus := doMouseLock and "Enabled" or "Disabled"
+			ctrlObj.Text := "Block Inputs: " . (toggleStatus == "Enabled" ? "On" : "Off")
+		}
+
+		if ctrlObj.Name == "SendKey" {
+			local possibleKeys := ["LButton", "RButton", "MButton"]
+			local newValue := KeyToSend == "LButton" ? "RButton" : "LButton"
+			RegWrite(newValue, "REG_SZ", RegKeyPath, "keyToSend")
+			KeyToSend := RegRead(RegKeyPath, "KeyToSend", "LButton")
+			
+			if SendKeyButton
+				SendKeyButton.Text := "Send Key: " . (KeyToSend == "LButton" ? "Left Click" : "Right Click")
+		}
+	}
 
 	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
@@ -1277,228 +1142,105 @@ CreateClickerSettingsGUI(*) {
 	SettingsUI.BackColor := intWindowColor
 	SettingsUI.OnEvent("Close", CloseSettingsUI)
 	SettingsUI.Title := "Clicker Settings"
-	
-	
-	local Popout_MarginX := 10
-	local Popout_MarginY := 10
-	local groupPadding := 20
-	
-	local Popout_Margin_Width := Popout_Width - (SettingsUI.MarginX*2)
-	local Popout_Margin_Height := Popout_Height - (SettingsUI.MarginY*2)
-	
-	local buddyWidth := 40
-	local sliderWidth := (Popout_Margin_Width - ((buddyWidth+SettingsUI.MarginX)*2))
 
-	MouseSpeedLabel := SettingsUI.Add("Text", "Section Center vMouseSpeedLabel h" buttonHeight " w" Popout_Margin_Width, "Mouse Speed: " . math.clamp(MouseSpeed,0,maxSpeed) . " ms")
-	MouseSpeedSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " 0x300 0xC00 AltSubmit vMouseSpeed w" sliderWidth)
+	; Mouse Speed
+	MouseSpeedLabel := SettingsUI.Add("Text", "Section Center vMouseSpeedLabel h20 w" Popout_Width/1.05, "Mouse Speed: " . math.clamp(MouseSpeed,0,maxSpeed) . " ms")
+	MouseSpeedLabel.SetFont("s14 w600", "Consolas")
+	MouseSpeedLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
 
-	ClickRateOffsetLabel := SettingsUI.Add("Text", "xm Section Center vClickRateOffsetLabel h" buttonHeight " w" Popout_Margin_Width, "Click Rate Offset: " . math.clamp(MouseClickRateOffset,0,maxSpeed) . " ms")
-	ClickRateSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vClickRateOffset w" sliderWidth)
+	MouseSpeedSlider := SettingsUI.Add("Slider", "xm+" . Popout_Width/sliderWidthCoefficient . " 0x300 0xC00 AltSubmit vMouseSpeed w" Popout_Width/1.5 - (SettingsUI.MarginX))
+	MouseSpeedSlider.OnEvent("Change", updateSliderValues)
+	
+	MS_Buddy1 := SettingsUI.Add("Text", "Center vMS_Buddy1 h20 w" buddyWidth, "Fast")
+	MS_Buddy1.SetFont("s12 w600", "Consolas")
+	MS_Buddy1.Opt("Background" intWindowColor . " c" ControlTextColor)
+	MS_Buddy2 := SettingsUI.Add("Text", "Center vMS_Buddy2 h20 w" buddyWidth, "Slow")
+	MS_Buddy2.SetFont("s12 w600", "Consolas")
+	MS_Buddy2.Opt("Background" intWindowColor . " c" ControlTextColor)
 
-	ClickRadiusLabel := SettingsUI.Add("Text", "xm Section Center vClickRadiusLabel h" buttonHeight " w" Popout_Margin_Width, "Click Radius: " . math.clamp(MouseClickRadius,0,maxSpeed) . " pixels")
-	ClickRadiusSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vClickRadius w" sliderWidth)
-	
-	MouseClicksLabel := SettingsUI.Add("Text", "xm Section Center vMouseClicksLabel h" buttonHeight " w" Popout_Margin_Width, "Click Amount: " . math.clamp(MouseClicks,1,maxClicks) . " clicks")
-	MouseClicksSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vMouseClicks w" sliderWidth)
-	
-	CooldownLabel := SettingsUI.Add("Text", "xm Section Center vCooldownLabel h" buttonHeight " w" Popout_Margin_Width, "Cooldown: " SecondsToWait " seconds")
-	EditCooldownButton := SettingsUI.Add("Button", "x" Popout_MarginX " yp vCooldownEditor h" buttonHeight " w" Popout_Margin_Width/5, "Custom")
-	CooldownSlider := SettingsUI.Add("Slider", "x" buddyWidth+(SettingsUI.MarginX*2) " y+-" sliderOffset . " 0x300 0xC00 AltSubmit vCooldownSlider w" sliderWidth)
-
-	SendKeyLabel := SettingsUI.Add("Text", "xm+" Popout_MarginX/2 " Section Center vSendKeyLabel h" buttonHeight " w" Popout_Margin_Width/2-Popout_MarginX, "Send Key:")
-	SendKeyButton := SettingsUI.Add("Button", "xm+" Popout_MarginX/2 " Section Center vSendKeyButton h" buttonHeight " w" Popout_Margin_Width/2-Popout_MarginX, keytoSend == "LButton" ? "Left Click" : "Right Click")
-	
-	ToggleMouseLock := SettingsUI.Add("Button", "x+m Center vToggleMouseLock h" buttonHeight " w" Popout_Margin_Width/2-Popout_MarginX, "Block Inputs: " . (toggleStatus == "Enabled" ? "On" : "Off"))
-	
-	; Slider Description Box
-	descriptionGroup := SettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" 0 " w" Popout_Margin_Width, "")
-	DescriptionBoxBG := SettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . (0) . " w" Popout_Margin_Width - groupPadding)
-	DescriptionBox := SettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . (0) . " w" Popout_Margin_Width - groupPadding)
-	
-	; Hover Descriptions
-	local Descriptions := Map(
-		; Sliders
-		"MouseSpeed", "Use this slider to control how fast the mouse moves to each location in the auto-clicker sequence.",
-		"ClickRateOffset", 'Use this slider to control the time between clicks when the auto-clicker fires.',
-		"ClickRadius", "Use this slider to add random variations to the click auto-clicker's click pattern.`n`n(Higher values = Larger area of randomized clicks)",
-		"ToggleMouseLock", "This button controls if the script blocks user inputs or not during the short auto-click sequence.`n`nIt is recommended to enable this setting if you are actively using your mouse or keyboard when the script is running. This is to prevent accidental mishaps in your gameplay.`n`n(Note: This setting will not impede on your active gameplay session, as your manual inputs will reset the script's auto-click timer!)",
-		"MouseClicks", "Use this slider to control how many clicks are sent when the bar fills to 100%.",
-		"CooldownEditor", "This button controls the duration of the auto-clicker sequence timer.`n`nLength: 0-15 minutes`n`n(Note: Setting the auto-clicker to 0 will constantly click, like typical auto-clickers, however other windows not in the target scope will be ignored and not clicked.)",
-		"CooldownSlider", "Use this slider to fine-tune the cooldown for the auto-clicker. Alternatively you can use the `"Custom Cooldown`" button to set a specific value.",
-		"SendKeyLabel", "This button controls whether the script sends a left or right click when the auto-clicker fires.`n`nLeft Click: Sends a left click to the target window.`n`nRight Click: Sends a right click to the target window.",
-		"SendKeyButton", "This button controls whether the script sends a left or right click when the auto-clicker fires.`n`nLeft Click: Sends a left click to the target window.`n`nRight Click: Sends a right click to the target window.",
-	)
-	
-	MS_Buddy1 :=			SettingsUI.Add("Text", "Center vMS_Buddy1 h" buttonHeight " w" buddyWidth, "Fast")
-	MS_Buddy2 :=			SettingsUI.Add("Text", "Center vMS_Buddy2 h" buttonHeight " w" buddyWidth, "Slow")
-	Rate_Buddy1 := 			SettingsUI.Add("Text", "Center vRate_Buddy1 h" buttonHeight " w" buddyWidth, "Less")
-	Rate_Buddy2 := 			SettingsUI.Add("Text", "Center vRate_Buddy2 h" buttonHeight " w" buddyWidth, "More")
-	ClickRadiusBuddy1 := 	SettingsUI.Add("Text", "Center vClickRadiusBuddy1 h" buttonHeight " w" buddyWidth, "Small")
-	ClickRadiusBuddy2 :=	SettingsUI.Add("Text", "Center vClickRadiusBuddy2 h" buttonHeight " w" buddyWidth, "Big")
-	MouseClicksBuddy1 := 	SettingsUI.Add("Text", "Center vMouseClicksBuddy1 h" buttonHeight " w" buddyWidth, "Less")
-	MouseClicksBuddy2 := 	SettingsUI.Add("Text", "Center vMouseClicksBuddy2 h" buttonHeight " w" buddyWidth, "More")
-	Cooldown_Buddy1 := 		SettingsUI.Add("Text", "Center vCooldown_Buddy1 h" buttonHeight " w" buddyWidth, "Fast")
-	Cooldown_Buddy2 := 		SettingsUI.Add("Text", "Center vCooldown_Buddy2 h" buttonHeight " w" buddyWidth, "Slow")
-	
-	MS_Buddy1.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	MS_Buddy2.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	Rate_Buddy1.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	Rate_Buddy2.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ClickRadiusBuddy1.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ClickRadiusBuddy2.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	MouseClicksBuddy1.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	MouseClicksBuddy2.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	Cooldown_Buddy1.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	Cooldown_Buddy2.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	
-	MouseSpeedLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ClickRateOffsetLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ClickRadiusLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	MouseClicksLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	CooldownLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	EditCooldownButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ToggleMouseLock.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	SendKeyButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	DescriptionBox.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	SendKeyLabel.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	
-	MS_Buddy1.Opt("Background" intWindowColor " c" ControlTextColor)
-	MS_Buddy2.Opt("Background" intWindowColor " c" ControlTextColor)
-	Rate_Buddy1.Opt("Background" intWindowColor " c" ControlTextColor)
-	Rate_Buddy2.Opt("Background" intWindowColor " c" ControlTextColor)
-	ClickRadiusBuddy1.Opt("Background" intWindowColor " c" ControlTextColor)
-	ClickRadiusBuddy2.Opt("Background" intWindowColor " c" ControlTextColor)
-	MouseClicksBuddy1.Opt("Background" intWindowColor " c" ControlTextColor)
-	MouseClicksBuddy2.Opt("Background" intWindowColor " c" ControlTextColor)
-	Cooldown_Buddy1.Opt("Background" intWindowColor " c" ControlTextColor)
-	Cooldown_Buddy2.Opt("Background" intWindowColor " c" ControlTextColor)
-	
-	SendKeyLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
-	MouseSpeedLabel.Opt("Background" intWindowColor " c" ControlTextColor)
-	ClickRateOffsetLabel.Opt("Background" intWindowColor " c" ControlTextColor)
-	ClickRadiusLabel.Opt("Background" intWindowColor " c" ControlTextColor)
-	MouseClicksLabel.Opt("Background" intWindowColor " c" ControlTextColor)
-	CooldownLabel.Opt("Background" intWindowColor " c" ControlTextColor)
-	EditCooldownButton.Opt("Background" intWindowColor "")
-	ToggleMouseLock.Opt("Background" intWindowColor " c" ControlTextColor)
-	SendKeyButton.Opt("Background" intWindowColor " c" ControlTextColor)
-	descriptionGroup.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBoxBG.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBox.Opt("Background" intWindowColor . " c" ControlTextColor)
-
-	MouseSpeedSlider.Opt("ToolTipBottom Buddy1MS_Buddy1 Buddy2MS_Buddy2 TickInterval" maxSpeed/10 " Range0-" maxSpeed)
-	ClickRateSlider.Opt("ToolTipBottom Buddy1Rate_Buddy1 Buddy2Rate_Buddy2 TickInterval" maxRate/10 " Range0-" maxRate)
-	ClickRadiusSlider.Opt("ToolTipBottom Buddy1ClickRadiusBuddy1 Buddy2ClickRadiusBuddy2 TickInterval" maxRadius/10 " Range0-" maxRadius)
-	MouseClicksSlider.Opt("ToolTipBottom Buddy1MouseClicksBuddy1 Buddy2MouseClicksBuddy2 TickInterval" maxClicks/10 " Range1-" maxClicks)
-	CooldownSlider.Opt("ToolTipBottom Buddy1Cooldown_Buddy1 Buddy2Cooldown_Buddy2 TickInterval" (maxCooldown-10)/15 " Range10-" maxCooldown)
-
+	MouseSpeedSlider.Opt("Buddy1MS_Buddy1 Buddy2MS_Buddy2 Range0-" maxSpeed)
 	MouseSpeedSlider.Value := math.clamp(MouseSpeed,0,maxSpeed) or 0
+
+	; Mouse Click Rate Offset
+	ClickRateOffsetLabel := SettingsUI.Add("Text", "xm y+-" . labelOffset . " Section Center vClickRateOffsetLabel h20 w" Popout_Width/1.05, "Click Rate Offset: " . math.clamp(MouseClickRateOffset,0,maxSpeed) . " ms")
+	ClickRateOffsetLabel.SetFont("s14 w600", "Consolas")
+	ClickRateOffsetLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	ClickRateSlider := SettingsUI.Add("Slider", "xm+" . Popout_Width/sliderWidthCoefficient . " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vClickRateOffset w" Popout_Width/1.5 - (SettingsUI.MarginX))
+	ClickRateSlider.OnEvent("Change", updateSliderValues)
+	
+	Rate_Buddy1 := SettingsUI.Add("Text", "Center vRate_Buddy1 h20 w" buddyWidth, "Less")
+	Rate_Buddy1.SetFont("s12 w600", "Consolas")
+	Rate_Buddy1.Opt("Background" intWindowColor . " c" ControlTextColor)
+	Rate_Buddy2 := SettingsUI.Add("Text", "Center vRate_Buddy2 h20 w" buddyWidth, "More")
+	Rate_Buddy2.SetFont("s12 w600", "Consolas")
+	Rate_Buddy2.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	ClickRateSlider.Opt("Buddy1Rate_Buddy1 Buddy2Rate_Buddy2 Range0-" maxRate)
 	ClickRateSlider.Value := math.clamp(MouseClickRateOffset,0,maxSpeed) or 0
+
+	; Mouse Click Radius
+	ClickRadiusLabel := SettingsUI.Add("Text", "xm y+-" . labelOffset . " Section Center vClickRadiusLabel h20 w" Popout_Width/1.05, "Click Radius: " . math.clamp(MouseClickRadius,0,maxSpeed) . " pixels")
+	ClickRadiusLabel.SetFont("s14 w600", "Consolas")
+	ClickRadiusLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	ClickRadiusSlider := SettingsUI.Add("Slider", "xm+" . Popout_Width/sliderWidthCoefficient . " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vClickRadius w" Popout_Width/1.5 - (SettingsUI.MarginX))
+	ClickRadiusSlider.OnEvent("Change", updateSliderValues)
+	
+	ClickRadiusBuddy1 := SettingsUI.Add("Text", "Center vClickRadiusBuddy1 h20 w" buddyWidth, "Small")
+	ClickRadiusBuddy1.SetFont("s12 w600", "Consolas")
+	ClickRadiusBuddy1.Opt("Background" intWindowColor . " c" ControlTextColor)
+	ClickRadiusBuddy2 := SettingsUI.Add("Text", "Center vClickRadiusBuddy2 h20 w" buddyWidth, "Big")
+	ClickRadiusBuddy2.SetFont("s12 w600", "Consolas")
+	ClickRadiusBuddy2.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	ClickRadiusSlider.Opt("Buddy1ClickRadiusBuddy1 Buddy2ClickRadiusBuddy2 Range0-" maxRadius)
 	ClickRadiusSlider.Value := math.clamp(MouseClickRadius,0,maxSpeed) or 0
+	
+	; Mouse Clicks
+	MouseClicksLabel := SettingsUI.Add("Text", "xm y+-" . labelOffset . " Section Center vMouseClicksLabel h20 w" Popout_Width/1.05, "Click Amount: " . math.clamp(MouseClicks,1,maxClicks) . " clicks")
+	MouseClicksLabel.SetFont("s14 w600", "Consolas")
+	MouseClicksLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	MouseClicksSlider := SettingsUI.Add("Slider", "xm+" . Popout_Width/sliderWidthCoefficient . " y+-" . sliderOffset . " 0x300 0xC00 AltSubmit vMouseClicks w" Popout_Width/1.5 - (SettingsUI.MarginX))
+	MouseClicksSlider.OnEvent("Change", updateSliderValues)
+	
+	MouseClicksBuddy1 := SettingsUI.Add("Text", "Center vMouseClicksBuddy1 h20 w" buddyWidth, "Less")
+	MouseClicksBuddy1.SetFont("s12 w600", "Consolas")
+	MouseClicksBuddy1.Opt("Background" intWindowColor . " c" ControlTextColor)
+	MouseClicksBuddy2 := SettingsUI.Add("Text", "Center vMouseClicksBuddy2 h20 w" buddyWidth, "More")
+	MouseClicksBuddy2.SetFont("s12 w600", "Consolas")
+	MouseClicksBuddy2.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	MouseClicksSlider.Opt("Buddy1MouseClicksBuddy1 Buddy2MouseClicksBuddy2 Range1-" maxClicks)
 	MouseClicksSlider.Value := math.clamp(MouseClicks,1,maxClicks) or 1
+	
+	; Mouse Click Rate Offset
+	CooldownLabel := SettingsUI.Add("Text", "xm+50 y+-" . labelOffset . " Section Center vCooldownLabel h20 w" Popout_Width/1.55, "Cooldown: " SecondsToWait " seconds")
+	CooldownLabel.SetFont("s14 w600", "Consolas")
+	CooldownLabel.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	; Cooldown Editor
+	EditCooldownButton := SettingsUI.Add("Button", "x+m vCooldownEditor h20 w" Popout_Width/7, "Custom")
+	EditCooldownButton.OnEvent("Click", EditCooldown)
+	EditCooldownButton.SetFont("s10 w500", "Consolas")
+	EditCooldownButton.Opt("Background" intWindowColor)
+
+
+	CooldownSlider := SettingsUI.Add("Slider", "xm+" . Popout_Width/sliderWidthCoefficient . " y+" sliderOffset/1.5 . " 0x300 0xC00 AltSubmit vCooldownSlider w" Popout_Width/1.5 - (SettingsUI.MarginX))
+	CooldownSlider.OnEvent("Change", updateSliderValues)
+	
+	Cooldown_Buddy1 := SettingsUI.Add("Text", "Center vCooldown_Buddy1 h20 w" buddyWidth, "Fast")
+	Cooldown_Buddy1.SetFont("s12 w600", "Consolas")
+	Cooldown_Buddy1.Opt("Background" intWindowColor . " c" ControlTextColor)
+	Cooldown_Buddy2 := SettingsUI.Add("Text", "Center vCooldown_Buddy2 h20 w" buddyWidth, "Slow")
+	Cooldown_Buddy2.SetFont("s12 w600", "Consolas")
+	Cooldown_Buddy2.Opt("Background" intWindowColor . " c" ControlTextColor)
+
+	CooldownSlider.Opt("Buddy1Cooldown_Buddy1 Buddy2Cooldown_Buddy2 Range10-" maxCooldown)
 	CooldownSlider.Value := math.clamp(SecondsToWait,0,maxCooldown) or 0
 
-	MouseSpeedSlider.OnEvent("Change", updateSliderValues)
-	ClickRateSlider.OnEvent("Change", updateSliderValues)
-	ClickRadiusSlider.OnEvent("Change", updateSliderValues)
-	MouseClicksSlider.OnEvent("Change", updateSliderValues)
-	EditCooldownButton.OnEvent("Click", EditCooldown)
-	CooldownSlider.OnEvent("Change", updateSliderValues)
-	ToggleMouseLock.OnEvent("Click", updateToggle)
-	SendKeyButton.OnEvent("Click", updateToggle)
 	updateSliderValues(CooldownSlider,"")
-	
-	; Functions
-	CloseSettingsUI(*) {
-		SetTimer(mouseHoverDescription,0)
-
-		if SettingsUI {
-			SettingsUI.Destroy()
-			SettingsUI := ""
-		}
-
-		WinActivate(MainUI.Title)
-	}
-	; Slider update function
-	updateSliderValues(ctrlObj, info) {
-		; MsgBox(ctrlObj.Name . ": " . info)
-		if ctrlObj.Name == "MouseSpeed" {
-			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseSpeed", ctrlObj.Value)
-			MouseSpeed := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseSpeed", 0, "int")
-			
-			if MouseSpeedLabel
-				MouseSpeedLabel.Text := "Mouse Speed: " . (ctrlObj.Value >= 1000 ? Format("{:.2f} s", ctrlObj.Value / 1000) : ctrlObj.Value . " ms")
-		}
-
-		if ctrlObj.Name == "ClickRateOffset" {
-			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "ClickRateOffset", ctrlObj.Value)
-			MouseClickRateOffset := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ClickRateOffset", 0, "int")
-			
-			if ClickRateOffsetLabel
-				ClickRateOffsetLabel.Text := "Click Rate Offset: " . (ctrlObj.Value >= 1000 ? Format("{:.2f} s", ctrlObj.Value / 1000) : ctrlObj.Value . " ms")
-		}
-
-		if ctrlObj.Name == "ClickRadius" {
-			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "ClickRadius", ctrlObj.Value)
-			MouseClickRateOffset := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ClickRadius", 0, "int")
-			
-			if ClickRadiusLabel
-				ClickRadiusLabel.Text := "Click Radius: " . ctrlObj.Value . " pixels"
-		}
-
-		if ctrlObj.Name == "MouseClicks" {
-			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseClicks", ctrlObj.Value)
-			MouseClicks := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MouseClicks", 0, "int")
-			
-			if MouseClicksLabel
-				MouseClicksLabel.Text := "Click Amount: " . ctrlObj.Value . " clicks"
-		}
-
-		if ctrlObj.Name == "CooldownSlider" {
-			; local targetSeconds := (SecondsToWait > 0) and Round(Mod(SecondsToWait, 60),0) or 0
-			; local targetFormattedTime := Format("{:02}:{:02}", MinutesToWait, targetSeconds)
-			; local mins_suffix := SecondsToWait > 60 and " minutes" or SecondsToWait == 60 and " minute" or SecondsToWait < 60 and " seconds"
-			
-			val := ctrlObj.Value ; Slider's raw value in seconds
-			remainder := Mod(val, 60)
-			if (remainder <= 3 || remainder >= 57) {
-				val := Round(val / 60) * 60
-				ctrlObj.Value := val ; snap to the nearest minute
-			}
-
-			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", math.clamp(val,(minCooldown > 0 and minCooldown/60) or 0,900))
-			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", Round(math.clamp(val / 60,(0 and minCooldown) or 0,15),2))
-			SecondsToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", 0, "int")
-			MinutesToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", 0, "int")
-			local targetSeconds := (SecondsToWait > 0) and Round(Mod(SecondsToWait, 60),0) or 0
-			local targetFormattedTime := Format("{:02}:{:02}", MinutesToWait, targetSeconds)
-			local mins_suffix := SecondsToWait > 60 and " minutes" or SecondsToWait == 60 and " minute" or SecondsToWait < 60 and " seconds"
-			
-			if CooldownLabel
-				CooldownLabel.Text := "Cooldown: " targetFormattedTime . mins_suffix
-			UpdateTimerLabel()
-		}
-	}
-
-	; Toggle Function
-	updateToggle(ctrlObj, info) {
-		if ctrlObj.Name == "ToggleMouseLock" {
-			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "doMouseLock", !doMouseLock)
-			doMouseLock := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "doMouseLock", 0, "int")
-
-			local toggleStatus := doMouseLock and "Enabled" or "Disabled"
-			ctrlObj.Text := "Block Inputs: " . (toggleStatus == "Enabled" ? "On" : "Off")
-		}
-
-		if ctrlObj.Name == "SendKey" {
-			local newValue := KeyToSend == "~LButton" ? "~RButton" : "~LButton"
-			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", newValue)
-			KeyToSend := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "KeyToSend", "~LButton")
-			
-			if SendKeyButton
-				SendKeyButton.Text := "Send Key: " . (KeyToSend == "~LButton" ? "Left Click" : "Right Click")
-		}
-	}
 
 	EditCooldown(*) {
 		local newTime := CooldownEditPopup()
@@ -1511,7 +1253,36 @@ CreateClickerSettingsGUI(*) {
 		if CooldownLabel
 			CooldownLabel.Text := "Cooldown: " targetFormattedTime . mins_suffix
 	}
+	
+	; Mouse Lock
+	ToggleMouseLock := SettingsUI.Add("Button", "xm y+-" . labelOffset*1.15 . " Section Center vToggleMouseLock h30 w" Popout_Width/2.05, "Block Inputs: " . (toggleStatus == "Enabled" ? "On" : "Off"))
+	ToggleMouseLock.SetFont("s10 w500", "Consolas")
+	ToggleMouseLock.Opt("Background" intWindowColor . " c" ControlTextColor)
+	ToggleMouseLock.OnEvent("Click", updateToggle)
 
+	; Change key sent
+	SendKeyButton := SettingsUI.Add("Button", "x+m Section Center vSendKey h30 w" Popout_Width/2.05, "Send Key: " . (keytoSend == "LButton" ? "Left Click" : "Right Click"))
+	SendKeyButton.SetFont("s10 w500", "Consolas")
+	SendKeyButton.Opt("Background" intWindowColor . " c" ControlTextColor)
+	SendKeyButton.OnEvent("Click", updateToggle)
+	
+	; Slider Description Box
+	DescriptionBox := SettingsUI.Add("Text", "xm Section Left vDescriptionBox h" . Popout_Height/3.25 . " w" Popout_Width)
+	DescriptionBox.SetFont("s10 w700", "Consolas")
+	DescriptionBox.Opt("+Border Background" (testBoxColor or intWindowColor) . " c" ControlTextColor)
+	
+	; Hover Descriptions
+	local Descriptions := Map(
+		; Sliders
+		"MouseSpeed", "Use this slider to control how fast the mouse moves to each location in the auto-clicker sequence.",
+		"ClickRateOffset", 'Use this slider to control the time between clicks when the auto-clicker fires.',
+		"ClickRadius", "Use this slider to add random variations to the click auto-clicker's click pattern.`n`n(Higher values = Larger area of randomized clicks)",
+		"ToggleMouseLock", "This button controls if the script blocks user inputs or not during the short auto-click sequence.`n`nIt is recommended to enable this setting if you are actively using your mouse or keyboard when the script is running. This is to prevent accidental mishaps in your gameplay.`n`n(Note: This setting will not impede on your active gameplay session, as your manual inputs will reset the script's auto-click timer!)",
+		"MouseClicks", "Use this slider to control how many clicks are sent when the bar fills to 100%.",
+		"CooldownEditor", "This button controls the duration of the auto-clicker sequence timer.`n`nLength: 0-15 minutes`n`n(Note: Setting the auto-clicker to 0 will constantly click, like typical auto-clickers, however other windows not in the target scope will be ignored and not clicked.)",
+		"CooldownSlider", "Use this slider to fine-tune the cooldown for the auto-clicker. Alternatively you can use the `"Custom Cooldown`" button to set a specific value."
+	)
+	
 	updateDescriptionBoxValues(*) {
 		Descriptions.Set("MouseSpeedLabel", Descriptions["MouseSpeed"])
 		Descriptions.Set("MS_Buddy1", Descriptions["MouseSpeed"])
@@ -1533,40 +1304,10 @@ CreateClickerSettingsGUI(*) {
 		Descriptions.Set("Cooldown_Buddy1", Descriptions["CooldownSlider"])
 		Descriptions.Set("Cooldown_Buddy2", Descriptions["CooldownSlider"])
 	}
-	
+	updateDescriptionBoxValues()
+
 	updateDescriptionBox(newText := "") {
-		if newText == DescriptionBox.Text
-			return
-
-		ControlGetPos(&groupX, &groupY, &groupW, &groupH, descriptionGroup)
 		DescriptionBox.Text := newText
-
-		local textWidth := MeasureTextWidth(DescriptionBox, newText)
-		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
-		local totalControlHeight := 0
-
-		descriptionGroup.Move(,,, textHeight+(groupPadding*2.05))
-		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2.05))
-		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
-
-
-		for control in SettingsUI {
-			if !control.Type or !control.Name
-				continue
-		
-			switch control.Type {
-				case "Text", "Button", "Slider", "GroupBox":
-					if !InStr(control.Name, "Buddy") && !InStr(control.Name, "Description")
-						totalControlHeight += getControlSize(control).H
-					else if control.Name == "DescriptionGroupBox"
-						totalControlHeight += (getControlSize(descriptionGroup).H + groupPadding*2.5)
-			}
-		}
-
-		SettingsUI.GetPos(&SettingsX, &SettingsY, &SettingsW, &SettingsH)
-		SettingsUI.Move(SettingsX, SettingsY, Popout_Width + (Popout_MarginX*1.6), totalControlHeight)
-
-		; SettingsUI.Show("AutoSize")
 	}
 
 	mouseHoverDescription(*)
@@ -1577,9 +1318,8 @@ CreateClickerSettingsGUI(*) {
 		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
 		local targetControl := ""
 
-		if HoverControl && HoverWindow && HoverWindow {
-			if HoverWindow != SettingsUI.Hwnd
-				return
+		if HoverControl
+		{
 			try targetControl := SettingsUI.__Item[HoverControl]
 			if SettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
 				try updateDescriptionBox(Descriptions[targetControl.Name])
@@ -1589,36 +1329,26 @@ CreateClickerSettingsGUI(*) {
 			}
 		}
 	}
-	
-	updateDescriptionBoxValues()
-
 	SettingsUI.OnEvent("Close", CloseSettingsUI)
-	
+
 	; Calculate center position
 	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
-	
-	updateDescriptionBox(" ")
-	CheckDeviceTheme()
-	SettingsUI.Show("X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
+
+	updateGUITheme(SettingsUI)
+	SettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
 
 	SetTimer(mouseHoverDescription,50)
 }
 
 CreateScriptSettingsGUI(*) {
-	global ProfilesDir
-
 	; UI Settings
 	local PixelOffset := 10
-	local Popout_Width := 300
-	local Popout_Height := 350
+	local Popout_Width := 400
+	local Popout_Height := 600
 	local labelOffset := 50
 	local sliderOffset := 2.5
-
-	; Button Settings
-	global buttonFontSize, buttonFontWeight, buttonFont
-	local buttonHeight := 23
 
 	; Labels, Sliders, Buttons
 	global EditButton
@@ -1628,9 +1358,6 @@ CreateScriptSettingsGUI(*) {
 	global EditorButton
 	global ScriptDirButton
 	global AddToBootupFolderButton
-	local DescriptionBox := ""
-	local descriptionGroup := ""
-	local DescriptionBoxBG := ""
 
 	; Global Save Data
 	global ScriptSettingsUI
@@ -1645,14 +1372,11 @@ CreateScriptSettingsGUI(*) {
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
 
 	; Colors
+	global blnLightMode := RegRead("HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme")
 	global intWindowColor
 	global intControlColor
 	global ControlTextColor
 
-	local Popout_Margin_Width := ""
-	local Popout_Margin_Height := ""
-
-	local addToStartUp_Text := isInStartFolder and "Remove from Windows startup folder" or "Add to Windows startup folder"
 	local functions := Map(
 		"EditButton", Map(
 			"Function", (*) => (
@@ -1680,77 +1404,82 @@ CreateScriptSettingsGUI(*) {
 		),
 	)
 
+	CloseSettingsUI(*)
+	{
+		if ScriptSettingsUI {
+			ScriptSettingsUI.Destroy()
+			ScriptSettingsUI := ""
+		}
+	}
+
+	; If settingsUI is open, close it
 	if ScriptSettingsUI
 		return CloseSettingsUI()
 
-	ScriptSettingsUI := Gui(AOTStatus " +Owner" . MainUI.Hwnd)
-	ScriptSettingsUI.Title := "Script Settings"
+	; ############################################ ;
+	; ############################################ ;
+	; ############################################ ;
+
+	; Create GUI Window
+	ScriptSettingsUI := Gui(AOTStatus)
+	ScriptSettingsUI.Opt("+Owner" . MainUI.Hwnd)
 	ScriptSettingsUI.BackColor := intWindowColor
-	Popout_Margin_Width := Popout_Width-(ScriptSettingsUI.MarginX*2)
-	Popout_Margin_Height := Popout_Height-(ScriptSettingsUI.MarginY*2)
-
-	local Popout_MarginX := 10
-	local Popout_MarginY := 10
-	local groupPadding := 20
-	
-	local Popout_Margin_Width := Popout_Width - (ScriptSettingsUI.MarginX*2)
-	local Popout_Margin_Height := Popout_Height - (ScriptSettingsUI.MarginY*2)
-
-	EditButton := 				ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vEditButton Section Center", "View Script")
-	ReloadButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vReloadButton xs", "Relaunch Script")
-	ExitButton := 				ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vExitButton xs", "Close Script")
-	EditorButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vEditorSelector xs", "Select Script Editor")
-	ScriptDirButton := 			ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vScriptDir xs", "Open File Location")
-	AddToBootupFolderButton :=  ScriptSettingsUI.Add("Button", "h" buttonHeight " w" Popout_Margin_Width " vStartupToggle xs", addToStartUp_Text)
-
-	evenlySpaceControls() {
-		local buttonCount := 0
-		local remainingHeight := 0
-
-		for i, control in ScriptSettingsUI {
-			if control.Name != "Section" {
-				buttonCount++
-				local totalHeight := buttonHeight * buttonCount + (ScriptSettingsUI.MarginY * (buttonCount - 1)) + PixelOffset * 2
-				remainingHeight := Popout_Margin_Height - totalHeight + (ScriptSettingsUI.MarginY * 2)
-
-				control.Y := (remainingHeight / 2) + (buttonHeight * (i - 1)) + ScriptSettingsUI.MarginY * i + PixelOffset
-			}
-		}
-		
-		; Slider Description Box
-		descriptionGroup := ScriptSettingsUI.Add("GroupBox","xm Section vDescriptionGroupBox h" 0 " w" Popout_Margin_Width, "")
-		DescriptionBoxBG := ScriptSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . (0) . " w" Popout_Margin_Width - groupPadding)
-		DescriptionBox := ScriptSettingsUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . (0) . " w" Popout_Margin_Width - groupPadding)
-	}
-	
-	evenlySpaceControls()
-
 	ScriptSettingsUI.OnEvent("Close", CloseSettingsUI)
+	ScriptSettingsUI.Title := "Script Settings"
+
+	; ############################################ ;
+	; ############################################ ;
+	; ############################################ ;
+	
+	; Edit
+	EditButton := ScriptSettingsUI.Add("Button","vEditButton Section Center h40 w" Popout_Width/1.05, "View Script")
 	EditButton.OnEvent("Click", functions["EditButton"]["Function"])
-	ReloadButton.OnEvent("Click", ReloadScript)
-	ExitButton.OnEvent("Click", functions["ExitButton"]["Function"])
-	EditorButton.OnEvent("Click", functions["EditorSelector"]["Function"])
-	ScriptDirButton.OnEvent("Click", functions["ScriptDir"]["Function"])
-	AddToBootupFolderButton.OnEvent("Click", ToggleStartup)
-
-	EditButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ReloadButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ExitButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	EditorButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	ScriptDirButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	AddToBootupFolderButton.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	DescriptionBox.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-
+	EditButton.SetFont("s12 w500", "Consolas")
 	EditButton.Opt("Background" intWindowColor)
+	
+	; Reload
+	ReloadButton := ScriptSettingsUI.Add("Button", "vReloadButton xs h40 w" (Popout_Width/1.05), "Relaunch Script")
+	ReloadButton.OnEvent("Click", ReloadScript)
+	ReloadButton.SetFont("s12 w500", "Consolas")
 	ReloadButton.Opt("Background" intWindowColor)
+	
+	; Exit
+	ExitButton := ScriptSettingsUI.Add("Button", "vExitButton xs h40 w" (Popout_Width/1.05), "Close Script")
+	ExitButton.OnEvent("Click", functions["ExitButton"]["Function"])
+	ExitButton.SetFont("s12 w500", "Consolas")
 	ExitButton.Opt("Background" intWindowColor)
-	EditorButton.Opt("Background" intWindowColor)
-	ScriptDirButton.Opt("Background" intWindowColor)
-	AddToBootupFolderButton.Opt("Background" intWindowColor)
-	descriptionGroup.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBoxBG.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBox.Opt("Background" intWindowColor . " c" ControlTextColor)
 
+	; ############################################ ;
+	; ############################################ ;
+	
+	; Editor Selector
+	EditorButton := ScriptSettingsUI.Add("Button", "vEditorSelector xs h40 w" Popout_Width/1.05, "Select Script Editor")
+	EditorButton.OnEvent("Click", functions["EditorSelector"]["Function"])
+	EditorButton.SetFont("s12 w500", "Consolas")
+	EditorButton.Opt("Background" intWindowColor)
+
+	; Open Script Directory
+	ScriptDirButton := ScriptSettingsUI.Add("Button", "vScriptDir xs h40 w" Popout_Width/1.05, "Open File Location")
+	ScriptDirButton.OnEvent("Click", functions["ScriptDir"]["Function"])
+	ScriptDirButton.SetFont("s12 w500", "Consolas")
+	ScriptDirButton.Opt("Background" intWindowColor)
+
+	local addToStartUp_Text := isInStartFolder and "Remove from Windows startup folder" or "Add to Windows startup folder"
+	AddToBootupFolderButton := ScriptSettingsUI.Add("Button", "vStartupToggle xs h40 w" Popout_Width/1.05, addToStartUp_Text)
+	AddToBootupFolderButton.OnEvent("Click", ToggleStartup)
+	AddToBootupFolderButton.Opt("Background" intWindowColor)
+	AddToBootupFolderButton.SetFont("s12 w500", "Consolas")
+
+	; ############################################ ;
+	; ############################################ ;
+	; ############################################ ;
+
+	; Slider Description Box
+	local testBoxColor := "666666"
+	DescriptionBox := ScriptSettingsUI.Add("Text", "xm Section Left vDescriptionBox h" . Popout_Height/4 . " w" Popout_Width/1.05)
+	DescriptionBox.SetFont("s10 w700", "Consolas")
+	DescriptionBox.Opt("+Border Background" (testBoxColor or intWindowColor) . " c" ControlTextColor)
+	
 	; Hover Descriptions
 	local Descriptions := Map(
 		; Sliders
@@ -1762,32 +1491,9 @@ CreateScriptSettingsGUI(*) {
 		"ExitButton", "Terminate the script",
 		"ReloadButton", "Reload the script",
 	)
-
-	CloseSettingsUI(*) {
-		SetTimer(mouseHoverDescription,0)
-
-		if ScriptSettingsUI {
-			ScriptSettingsUI.Destroy()
-			ScriptSettingsUI := ""
-		}
-		WinActivate(MainUI.Title)
-	}
-
+	
 	updateDescriptionBox(newText := "") {
-		if newText == DescriptionBox.Text
-			return
-
-		ControlGetPos(&groupX, &groupY, &groupW, &groupH, descriptionGroup)
 		DescriptionBox.Text := newText
-
-		local textWidth := MeasureTextWidth(DescriptionBox, newText)
-		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
-
-		descriptionGroup.Move(,,, textHeight+(groupPadding*2.1))
-		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2.1))
-		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
-		
-		ScriptSettingsUI.Show("AutoSize")
 	}
 
 	mouseHoverDescription(*)
@@ -1798,9 +1504,8 @@ CreateScriptSettingsGUI(*) {
 		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
 		local targetControl := ""
 
-		if HoverControl && HoverWindow && HoverWindow {
-			if HoverWindow != ScriptSettingsUI.Hwnd
-				return
+		if HoverControl
+		{
 			try targetControl := ScriptSettingsUI.__Item[HoverControl]
 			if ScriptSettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
 				try updateDescriptionBox(Descriptions[targetControl.Name])
@@ -1811,152 +1516,107 @@ CreateScriptSettingsGUI(*) {
 		}
 	}
 
-	; Get full window position and size (including title bar)
-	WinGetPos(&MainX, &MainY, &MainW, &MainH, MainUI.Hwnd)
+	; Calculate center position
+	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
+	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
+	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
-	CenterX := MainX + (MainW // 2) - (Popout_Width // 2)
-	CenterY := MainY + (MainH // 2) - (Popout_Height // 2)
+	updateGUITheme(ScriptSettingsUI)
+	ScriptSettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
 
-	CheckDeviceTheme()
-	updateDescriptionBox(" ")
-	ScriptSettingsUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . " h" . Popout_Height)
 	SetTimer(mouseHoverDescription,50)
 }
 
 CreateExtrasGUI(*) {
-	global ProfilesDir
-
-	global ExtrasUI, PatchUI
+	global MoveControl
+	global ControlResize
 	global warningRequested
 	global MainUI_PosX
 	global MainUI_PosY
-	global AlwaysOnTopActive
 
-	global buttonFontSize, buttonFontWeight, buttonFont, buttonHeight
-	global PixelOffset
-
-	; Colors
-	global intWindowColor
-	global intControlColor
-	global ControlTextColor
-
-	local AOTStatus := AlwaysOnTopActive == true and "+AlwaysOnTop" or "-AlwaysOnTop"
+	local Popout_Width := 400
+	local Popout_Height := 600
 	local createNewWarningButton := ""
-	local Popout_Width := 300
-	local Popout_Height := 350
-	local Popout_Margin_Height := 0
-	local Popout_Margin_Width := 0
-
-	local Popout_MarginX := 10
-	local Popout_MarginY := 10
-	local groupPadding := 20
-
-	local descriptionGroup := ""
-	local DescriptionBoxBG := ""
-	local DescriptionBox := ""
-
-	global buttonHeight
+	local ExtrasUI_Width := 400
+	local ExtrasUI_Height := 400
 	
 	; Create new UI
+	global ExtrasUI
 
 	if ExtrasUI
 		ExtrasUI.Destroy()
 
-	ExtrasUI := Gui(AOTStatus)
-	ExtrasUI.Opt("+Owner" . MainUI.Hwnd)
-	ExtrasUI.MarginX := Popout_MarginX
-	ExtrasUI.MarginY := Popout_MarginY
+	ExtrasUI := Gui(AlwaysOnTopActive " +Owner" . MainUI.Hwnd)
 	ExtrasUI.BackColor := intWindowColor
 	ExtrasUI.Title := "Extras"
 	ExtrasUI.OnEvent("Close", killGUI)
-	ExtrasUI.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
+	ExtrasUI.SetFont("s14 w500", "Courier New")
 	
-	Popout_Margin_Width := Popout_Width-(ExtrasUI.MarginX*2)
-	Popout_Margin_Height := Popout_Height-(ExtrasUI.MarginY*2)
-	
-	local DiscordLink := ExtrasUI.Add("Button", "vDiscordLink Center h" . buttonHeight . " w" . Popout_Margin_Width, 'Join the Discord!')
-	local GitHubLink := ExtrasUI.Add("Button", "vGithubLink Center h" . buttonHeight . " w" . Popout_Margin_Width, "GitHub Repository")
-	local OpenWarningLabel := ExtrasUI.Add("Button", "vOpenWarning Center h" . buttonHeight . " w" . Popout_Margin_Width, "View Warning Agreement")
-	local ViewPatchnotes := ExtrasUI.Add("Button", "vViewPatchnotes Center h" . buttonHeight . " w" . Popout_Margin_Width, "Patchnotes")
-	
-	evenlySpaceControls()
+	local UI_Margin_Width := ExtrasUI.MarginX*2
+	local UI_Margin_Height := ExtrasUI.MarginY*1.25
+	local buttonHeight := (ExtrasUI_Height/8) - UI_Margin_Height
+	local buttonWidth := ExtrasUI_Width - UI_Margin_Width
 
-	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
-	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
-	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)	
-	
+	; Discord
+	local DiscordLink := ExtrasUI.Add("Button", "vDiscordLink Center h" . buttonHeight . " w" . Popout_Width/1.05, 'Join the Discord!')
+	DiscordLink.SetFont("s12 w500", "Consolas")
+	DiscordLink.OnEvent("Click", DiscordLink_Click)
 	DiscordLink.Opt("Background" intWindowColor)
-	GitHubLink.Opt("Background" intWindowColor)
-	OpenWarningLabel.Opt("Background" intWindowColor)
-	ViewPatchnotes.Opt("Background" intWindowColor)
-	descriptionGroup.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBoxBG.Opt("Background" intWindowColor . " c" ControlTextColor)
-	DescriptionBox.Opt("Background" intWindowColor . " c" ControlTextColor)
+	DiscordLink_Click(*) {
+		Run("https://discord.gg/w8QdNsYmbr")
+	}
 	
-	DescriptionBox.SetFont("s" buttonFontSize " w" buttonFontWeight, buttonFont)
-	DiscordLink.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
-	GitHubLink.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
-	OpenWarningLabel.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
-	ViewPatchnotes.SetFont("w" buttonFontWeight . " s" buttonFontSize, buttonFont)
+	; GitHub
+	local GitHubLink := ExtrasUI.Add("Button", "vGithubLink Center h" . buttonHeight . " w" . Popout_Width/1.05, "GitHub Repository")
+	GitHubLink.SetFont("s12 w500", "Consolas")
+	GitHubLink.OnEvent("Click", GitHubLink_Click)
+	GitHubLink.Opt("Background" intWindowColor)
+	GitHubLink_Click(*) {
+		Run("https://github.com/WoahItsJeebus/JACS/")
+	}
 
-	DiscordLink.OnEvent("Click", (*) => Run("https://discord.gg/w8QdNsYmbr"))
-	GitHubLink.OnEvent("Click", (*) => Run("https://github.com/WoahItsJeebus/JACS/"))
+	; Warning UI
+	local OpenWarningLabel := ExtrasUI.Add("Button", "vOpenWarning Center h" . buttonHeight . " w" . Popout_Width/1.05, "View Warning Agreement")
+	OpenWarningLabel.SetFont("s12 w500", "Consolas")
 	OpenWarningLabel.OnEvent("Click", (*) => createWarningUI(true))
-	ViewPatchnotes.OnEvent("Click", (*) => ShowPatchNotesGUI())
+	OpenWarningLabel.Opt("Background" intWindowColor)
 
+	; Patchnotes UI
+	local ViewPatchnotes := ExtrasUI.Add("Button", "vViewPatchnotes Center h" . buttonHeight . " w" . Popout_Width/1.05, "Patchnotes")
+	ViewPatchnotes.SetFont("s12 w500", "Consolas")
+	ViewPatchnotes.OnEvent("Click", ShowPatchnotes)
+	ViewPatchnotes.Opt("Background" intWindowColor)
+
+	ShowPatchnotes(*) {
+		ShowPatchNotesGUI()
+	}
+
+	; ############################### ;
+	; ############################### ;
+	; Slider Description Box
+	local testBoxColor := "666666"
+	DescriptionBox := ExtrasUI.Add("Text", "xm Section Left vDescriptionBox h" . Popout_Height/4 . " w" Popout_Width/1.05)
+	DescriptionBox.SetFont("s10 w700", "Consolas")
+	DescriptionBox.Opt("+Border Background" (testBoxColor or intWindowColor) . " c" ControlTextColor)
+	
 	; Hover Descriptions
 	local Descriptions := Map(
+		; Sliders
+		; "Button", "Text",
 		"DiscordLink","Join the Discordeebus Discord server!",
 		"GithubLink","View the Github repository and see changes from past versions!",
 		"OpenWarning","View the warning popup seen when running the script for the first time (or if denying the agreement/closing without accepting)",
 		"ViewPatchnotes","Fetch the patchnotes for the latest version of the script posted to Github!",
 	)
-
-	evenlySpaceControls() {
-		local buttonCount := 0
-		local remainingHeight := 0
-
-		for i, control in ExtrasUI {
-			if control.Name != "Section" {
-				buttonCount++
-				local totalHeight := buttonHeight * buttonCount + (ExtrasUI.MarginY * (buttonCount - 1)) + PixelOffset * 2
-				remainingHeight := Popout_Margin_Height - totalHeight + (ExtrasUI.MarginY * 2)
-
-				control.Y := (remainingHeight / 2) + (buttonHeight * (i - 1)) + ExtrasUI.MarginY * i + PixelOffset
-			}
-		}
-		
-		; Slider Description Box
-		descriptionGroup := ExtrasUI.Add("GroupBox","xm Section vDescriptionGroupBox h" 0 " w" Popout_Margin_Width, "")
-		DescriptionBoxBG := ExtrasUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Left vDescriptionBoxBG h" . (0) . " w" Popout_Margin_Width - groupPadding)
-		DescriptionBox := ExtrasUI.Add("Text", "xs+" groupPadding/2 " yp+" groupPadding " Section Left vInvis_BG_DescriptionBox h" . (0) . " w" Popout_Margin_Width - groupPadding)
-	}
 	
 	updateDescriptionBox(newText := "") {
-		if newText == DescriptionBox.Text
-			return
-
-		ControlGetPos(&groupX, &groupY, &groupW, &groupH, descriptionGroup)
 		DescriptionBox.Text := newText
-
-		local textWidth := MeasureTextWidth(DescriptionBox, newText)
-		local textHeight := MeasureWrappedTextHeight(DescriptionBox, newText)
-
-		descriptionGroup.Move(,,, textHeight+(groupPadding*2.1))
-		DescriptionBoxBG.Move(,,, textHeight+(groupPadding/2.1))
-		DescriptionBox.Move(, groupY + groupPadding,, textHeight)
-		
-		ExtrasUI.Show("AutoSize")
 	}
-	updateDescriptionBox(" ")
+
 	mouseHoverDescription(*)
 	{
 		if not ExtrasUI or not DescriptionBox
 			return SetTimer(mouseHoverDescription,0)
-
-		global PatchUI
-		if PatchUI
-			return
 
 		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
 		local targetControl := ""
@@ -1973,34 +1633,37 @@ CreateExtrasGUI(*) {
 		}
 	}
 
-	SetTimer(mouseHoverDescription,50)
-
 	; Calculate center position
 	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
 	CenterX := MainX + (MainW / 2) - (Popout_Width / 2)
 	CenterY := MainY + (MainH / 2) - (Popout_Height / 2)
 
-	CheckDeviceTheme()
-	ExtrasUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . " h" . Popout_Height)
+	ExtrasUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . Popout_Width . "h" . Popout_Height)
+
+	SetTimer(mouseHoverDescription,50)
+
+	; Calculate center position
+	WinGetClientPos(&MainX, &MainY, &MainW, &MainH, MainUI.Title)
+	CenterX := MainX + (MainW / 2) - (ExtrasUI_Width / 2)
+	CenterY := MainY + (MainH / 2) - (ExtrasUI_Height / 2)
+
+	ExtrasUI.Show("AutoSize X" . CenterX . " Y" . CenterY . " w" . ExtrasUI_Width . " h" . ExtrasUI_Height)
 
 	killGUI(*) {
 		if ExtrasUI
 			ExtrasUI := ""
-		WinActivate(MainUI.Title)
 	}
 }
 
 ToggleHideUI(newstate) {
 	global MainUI
 	global isUIHidden
-	global ProfilesDir
-	global SelectedProcessExe
 
 	if not MainUI
 		return CreateGui()
 
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "isUIHidden", newstate)
-	isUIHidden := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isUIHidden", false, "bool")
+	RegWrite(newstate or not isUIHidden, "REG_DWORD", RegKeyPath, "isUIHidden")
+	isUIHidden := RegRead(RegKeyPath, "isUIHidden", false)
 }
 
 updateUIVisibility(*) {
@@ -2016,14 +1679,12 @@ updateUIVisibility(*) {
 	if isUIHidden
 		MainUI.Hide()
 	else if not isUIHidden and winState != -1
-		MainUI.Show((MainUI_PosX = 0 and MainUI_PosY = 0 and "Center" or "X" . MainUI_PosX . " Y" . MainUI_PosY) " Restore AutoSize")
+		MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " Restore AutoSize")
 }
 
 ToggleStartup(*) {
 	global AddToBootupFolderButton
 	global isInStartFolder
-	global ProfilesDir
-	global SelectedProcessExe
 
     StartupPath := A_AppData "\Microsoft\Windows\Start Menu\Programs\Startup"
 	TargetFile := StartupPath "\" A_ScriptName
@@ -2034,16 +1695,16 @@ ToggleStartup(*) {
         FileDelete(TargetFile)
 
 		newMode := false
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "isInStartFolder", newMode)
-		isInStartFolder := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isInStartFolder", false, "bool")
+		RegWrite(newMode, "REG_DWORD", RegKeyPath, "isInStartFolder")
+		isInStartFolder := RegRead(RegKeyPath, "isInStartFolder", false)
 
         MsgBox "Script removed from Startup."
     } else {
         FileCopy(A_ScriptFullPath, TargetFile)
 
 		newMode := true
-		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "isInStartFolder", newMode)
-		isInStartFolder := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isInStartFolder", false, "bool")
+		RegWrite(newMode, "REG_DWORD", RegKeyPath, "isInStartFolder")
+		isInStartFolder := RegRead(RegKeyPath, "isInStartFolder", false)
 
         MsgBox "Script added to Startup."
     }
@@ -2058,11 +1719,9 @@ ToggleAOT(*) {
 	global WindowSettingsUI
 	global AlwaysOnTopButton
 	global AlwaysOnTopActive
-	global ProfilesDir
-	global SelectedProcessExe
 
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "AlwaysOnTop", !AlwaysOnTopActive)
-	AlwaysOnTopActive := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "AlwaysOnTop", false, "bool")
+	RegWrite(!AlwaysOnTopActive, "REG_DWORD", RegKeyPath, "AlwaysOnTop")
+	AlwaysOnTopActive := RegRead(RegKeyPath, "AlwaysOnTop", false)
 
 	local AOTStatus := (AlwaysOnTopActive == true and "+AlwaysOnTop") or "-AlwaysOnTop"
 	local AOT_Text := (AlwaysOnTopActive == true and "On") or "Off"
@@ -2087,7 +1746,7 @@ CheckDeviceTheme(*) {
 	global WindowSettingsUI
 	global ExtrasUI
 	global ScriptSettingsUI
-	
+
 	; Check if themes.ini exists
 	if !FileExist(localScriptDir "\themes.ini")
 		return updateGlobalThemeVariables(currentTheme)
@@ -2107,8 +1766,7 @@ CooldownEditPopup(*) {
     global SecondsToWait
     global MainUI
     global minCooldown
-	global ProfilesDir
-	global SelectedProcessExe
+
     local UI_Height := 120
 	local UI_Width := 350
     local InpBox := InputBox(minCooldown . " - 15 minutes. You can also use formats like `"`1m 30s`"`, `"`10s`"`, or `"`1:30`"`.", "Edit Cooldown", "w" UI_Width " h" UI_Height)
@@ -2150,10 +1808,10 @@ CooldownEditPopup(*) {
     parsed.seconds := Round(parsed.minutes * 60)
     
     ; Write the new values to the registry
-    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", parsed.seconds)
-    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", parsed.minutes)
-    MinutesToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MinutesToWait", 15, "int")
-    SecondsToWait := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SecondsToWait", MinutesToWait * 60, "int")
+    RegWrite(parsed.seconds, "REG_DWORD", RegKeyPath, "SecondsToWait")
+    RegWrite(parsed.minutes, "REG_DWORD", RegKeyPath, "Cooldown")
+    MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
+    SecondsToWait := RegRead(RegKeyPath, "SecondsToWait", MinutesToWait * 60)
     
     ; Optionally update the UI timer, etc.
     UpdateTimerLabel()
@@ -2165,39 +1823,42 @@ SaveMainUIPosition(*) {
     global MainUI_PosX
     global MainUI_PosY
     global MainUI
-	global monitorNum
-	global ProfilesDir
-	global SelectedProcessExe
-
 	local winState := WinGetMinMax(MainUI.Title) ; -1 = Minimized | 0 = "Neither" (I assume floating) | 1 = Maximized
-	if winState == -1
+
+	if not WinActive(MainUI.Title)
 		return
 
-	global MainUI
-    WinGetPos(&x, &y,,,"ahk_id" MainUI.Hwnd)
-    monitorNum := MonitorGetNumberFromPoint(x, y)
+    if MainUI and WinExist(MainUI.Title) {
+		WinGetPos(&X,&Y,&W,&H, MainUI.Title)
 
-    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", x)
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", y)
-    updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "monitorNum", monitorNum)
+        ; Convert to unsigned if negative before saving
+        X := (X < 0) ? (0xFFFFFFFF + X + 1) : X
+        Y := (Y < 0) ? (0xFFFFFFFF + Y + 1) : Y
 
-	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", A_ScreenWidth / 2, "int")
-	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", A_ScreenHeight / 2, "int")
+        if MainUI_PosX != X and (X < 32000 and X > -32000) and winState != -1 {
+            RegWrite(X, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+            MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
+        }
+
+        if MainUI_PosY != Y and (Y < 32000 and Y > -32000) and winState != -1 {
+            RegWrite(Y, "REG_DWORD", RegKeyPath, "MainUI_PosY")
+            MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
+        }
+    }
 }
 
 UpdateTimerLabel(*) {
 	global isActive
 	global MinutesToWait
-	global SecondsToWait
 	global ElapsedTimeLabel
 	global CurrentElapsedTime
 	global lastUpdateTime := isActive > 1 and lastUpdateTime or A_TickCount
-	global WaitProgress
-	global WaitTimerLabel
-
+	global SecondsToWait
+	
 	; Calculate and update progress bar
     secondsPassed := (A_TickCount - lastUpdateTime) / 1000  ; Convert ms to seconds
-    finalProgress := Round((MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100, 0)
+
+    finalProgress := (MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100
 	
 	; Calculate and format CurrentElapsedTime as MM:SS
     currentMinutes := Floor(secondsPassed / 60)
@@ -2212,13 +1873,6 @@ UpdateTimerLabel(*) {
 	
 	try if ElapsedTimeLabel.Text != CurrentElapsedTime " / " . targetFormattedTime . " " mins_suffix
 			ElapsedTimeLabel.Text := CurrentElapsedTime " / " . targetFormattedTime . " " mins_suffix
-
-	if WaitProgress and WaitProgress.Value != finalProgress
-		WaitProgress.Value := finalProgress
-
-    local finalText  := Round(WaitProgress.Value, 0) "%"
-	if WaitTimerLabel and WaitTimerLabel.Text != finalText
-		WaitTimerLabel.Text := finalText
 }
 
 OpenScriptDir(*) {
@@ -2228,8 +1882,6 @@ OpenScriptDir(*) {
 
 SelectEditor(*) {
 	Editor := FileSelect(2,, "Select your editor", "Programs (*.exe)")
-	if !Editor
-		return
 	RegWrite Format('"{1}" "%L"', Editor), "REG_SZ", "HKCR\AutoHotkeyScript\Shell\Edit\Command"
 }
 
@@ -2287,14 +1939,12 @@ ToggleCore(optionalControl?, forceState?, *) {
 	global FirstRun
 	global activeText_Core
 	global CoreToggleButton
-	global ProfilesDir
-	global SelectedProcessExe
 
 	local newMode := forceState or switchActiveState()
 	
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "isActive", newMode)
-
-	isActive := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isActive", 0, "int")
+	RegWrite(newMode, "REG_DWORD", RegKeyPath, "isActive")
+	
+	isActive := RegRead(RegKeyPath, "isActive", 1)
 	activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
 	
 	CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
@@ -2355,8 +2005,11 @@ RunCore(*) {
 	global MinutesToWait
 	global SecondsToWait
 	global WaitProgress
+	global WaitTimerLabel
+	global CurrentElapsedTime
 
 	global wasActiveWindow
+
 	global doMouseLock
 
 	; Check for process
@@ -2418,21 +2071,28 @@ RunCore(*) {
 		if doMouseLock
 			Sleep(25)
 
+		; Unblock Inputs
+		BlockInput("Off")
+		BlockInput("Default")
+		BlockInput("MouseMoveOff")
+
 		if (MinutesToWait > 0 or SecondsToWait > 0)
 			WaitProgress.Value := 0
 
 		lastUpdateTime := A_TickCount
 	}
 	
-	; Unblock Inputs
-	BlockInput("Off")
-	BlockInput("Default")
-	BlockInput("MouseMoveOff")
-
 	; Calculate and progress visuals
-    ; secondsPassed := (A_TickCount - lastUpdateTime) / 1000  ; Convert ms to seconds
-    ; finalProgress := (MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100
+    secondsPassed := (A_TickCount - lastUpdateTime) / 1000  ; Convert ms to seconds
+    finalProgress := (MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100
 	UpdateTimerLabel()
+
+    ; Update UI elements for progress
+    WaitProgress.Value := finalProgress
+
+    local finalText  := Round(WaitProgress.Value, 0) "%"
+	if WaitTimerLabel and WaitTimerLabel.Text != finalText
+		WaitTimerLabel.Text := finalText
 }
 
 ; ################################ ;
@@ -2511,8 +2171,8 @@ ToggleSound(*) {
 	global playSounds
 	global SoundToggleButton
 	local newMode := playSounds < 3 and playSounds + 1 or 1
-	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "SoundMode", newMode)
-	playSounds := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SoundMode", 1, "int")
+	RegWrite(newMode, "REG_DWORD", RegKeyPath, "SoundMode")
+	playSounds := RegRead(RegKeyPath, "SoundMode", 1)
 
 	local activeText_Sound := (playSounds == 1 and "All") or (playSounds == 2 and "Less") or (playSounds == 3 and "None")
 	
@@ -2524,55 +2184,8 @@ ToggleSound(*) {
 }
 
 ; ################################ ;
-; ######## .ini Functions ######## ;
-
-IniSectionExists(fileOrLines, sectionName) {
-    if Type(fileOrLines) = "String" {
-        if !FileExist(fileOrLines)
-            return false
-        lines := StrSplit(FileRead(fileOrLines), "`n")
-    } else if Type(fileOrLines) = "Array" {
-        lines := fileOrLines
-    } else {
-        throw ValueError("Invalid type for IniSectionExists(): must be a file path or array of lines.")
-    }
-
-    sectionHeader := "[" sectionName "]"
-    for line in lines {
-        if Trim(line) = sectionHeader
-            return true
-    }
-    return false
-}
-
-; ################################ ;
 ; ####### Window Functions ####### ;
 ; ################################ ;
-getControlSize(ctrlObj) {
-	local x, y, w, h
-	ctrlObj.GetPos(&x, &y, &w, &h)
-	return {X: x, Y: y, W: w, H: h}
-}
-
-MonitorGetNumberFromPoint(x, y) {
-    ; MONITOR_DEFAULTTONEAREST = 2
-    hMonitor := DllCall("User32\MonitorFromPoint", "int64", (y << 32) | (x & 0xFFFFFFFF), "uint", 2, "ptr")
-    return MonitorGetIndexFromHandle(hMonitor)
-}
-
-MonitorGetIndexFromHandle(hMonitor) {
-    SysGetMonitorCount := SysGet(80)
-    Loop SysGetMonitorCount {
-        SysGetMonitorHandle := SysGet(MonitorHandle := 66 + A_Index - 1)
-        if (SysGetMonitorHandle = hMonitor)
-            return A_Index
-    }
-    return 1 ; fallback to primary monitor
-}
-
-; ################################# ;
-; ######## Theme Functions ######## ;
-; ################################# ;
 GetThemeListFromINI(filePath) {
     themeList := []
     Loop Read, filePath {
@@ -2583,11 +2196,8 @@ GetThemeListFromINI(filePath) {
 }
 
 updateGlobalThemeVariables(themeName := "") {
-	global localScriptDir
-	global ProfilesDir
-	global SelectedProcessExe
-	
 	; Create ini file if it doesn't exist for dark, light, and custom themes
+	currentTheme := RegRead(RegKeyPath, "SelectedTheme", "DarkMode")
 	dataSets := Map(
 		"DarkMode", Map(
 			"TextColor", "dddddd",
@@ -2595,10 +2205,7 @@ updateGlobalThemeVariables(themeName := "") {
 			"LinkColor", "99c3ff",
 			"Background", "303030",
 			"ProgressBarColor", "5c5cd8",
-			"ProgressBarBackground", "404040",
-			"DescriptionBoxColor", "404040",
-			"DescriptionBoxTextColor", "FFFFFF",
-			"HeaderColor", "ff4840",
+			"ProgressBarBackground", "404040"
 		),
 	
 		"LightMode", Map(
@@ -2607,51 +2214,45 @@ updateGlobalThemeVariables(themeName := "") {
 			"LinkColor", "4787e7",
 			"Background", "EEEEEE",
 			"ProgressBarColor", "54cc54",
-			"ProgressBarBackground", "FFFFFF",
-			"DescriptionBoxColor", "CCCCCC",
-			"DescriptionBoxTextColor", "000000",
-			"HeaderColor", "ff4840",
+			"ProgressBarBackground", "FFFFFF"
 		),
 	
 		"Custom", Map(
 			"TextColor", "000000",
 			"ButtonTextColor", "000000",
-			"LinkColor", "7d4dc2",
+			"LinkColor", "4787e7",
 			"Background", "FFFFFF",
-			"ProgressBarColor", "a24454",
-			"ProgressBarBackground", "FFFFFF",
-			"DescriptionBoxColor", "AAAAAA",
-			"DescriptionBoxTextColor", "000000",
-			"HeaderColor", "ff4840",
+			"ProgressBarColor", "54cc54",
+			"ProgressBarBackground", "FFFFFF"
 		)
 	)
 
+	themeFile := ""
 	if !FileExist(localScriptDir "\themes.ini") {
 		themeFile := localScriptDir "\themes.ini"
-		SaveThemeToINI(dataSets["DarkMode"], "DarkMode")
-		SaveThemeToINI(dataSets["LightMode"], "LightMode")
-		SaveThemeToINI(dataSets["Custom"], "Custom")
+		SaveThemeToINI(dataSets["DarkMode"], "DarkMode", themeFile)
+		SaveThemeToINI(dataSets["LightMode"], "LightMode", themeFile)
+		SaveThemeToINI(dataSets["Custom"], "Custom", themeFile)
 	} else
 		themeFile := localScriptDir "\themes.ini"
 
 	for themeName, themeData in dataSets {
-		local cachedTheme := LoadThemeFromINI(themeName)
+		local cachedTheme := LoadThemeFromINI(themeName, themeFile)
 		if !cachedTheme {
 			SaveThemeToINI(themeData, themeName, themeFile)
-			cachedTheme := LoadThemeFromINI(themeName)
+			cachedTheme := LoadThemeFromINI(themeName, themeFile)
 		}
 		
 		for dataName, dataValue in themeData {
 			existingValue := IniRead(themeFile, themeName, dataName, "__MISSING__")
-			
-			if existingValue == "__MISSING__" {
+			if !existingValue or existingValue == "__MISSING__" {
 				IniWrite(dataValue, themeFile, themeName, dataName)
 			}
 		}
 	}
 
 	; Get theme from ini file
-	global currentTheme := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "SelectedTheme", "DarkMode")
+	global currentTheme := themeName or RegRead(RegKeyPath, "SelectedTheme", "DarkMode")
 	local themeData := LoadThemeFromINI(currentTheme)
 
 	global intWindowColor := themeData["Background"]
@@ -2679,10 +2280,7 @@ LoadThemeFromINI(themeName, filePath := localScriptDir "\themes.ini") {
 		"FontSize",
 		"ProgressBarBackground",
 		"ProgressBarColor",
-		"LinkColor",
-		"DescriptionBoxColor",
-		"DescriptionBoxTextColor",
-		"HeaderColor",
+		"LinkColor"
 	]
 
     theme := Map()
@@ -2695,15 +2293,13 @@ ApplyThemeToGui(guiObj, themeMap) {
     if !guiObj
         return
 
-	if themeMap && themeMap.Has("Background") and (themeMap["Background"] == "000000" or themeMap["Background"] == "0x000000") {
-		; Set the background color of the GUI
-		themeMap["Background"] := "010101"
-	}
+    if guiObj.BackColor != themeMap["Background"]
+        guiObj.BackColor := themeMap["Background"]
 
     for _, ctrl in guiObj {
         ; Skip the main header except for background update
         if ctrl.Name = "MainHeader" {
-            ctrl.Opt("Background" themeMap["Background"] " c" themeMap["HeaderColor"])
+            ctrl.Opt("Background" themeMap["Background"])
             continue
         }
 
@@ -2712,20 +2308,12 @@ ApplyThemeToGui(guiObj, themeMap) {
             fg := "", bg := "", opt := ""
             switch ctrl.Type {
                 case "Button":
-					; If "IconButton" is not in the ctrl.Name, continue
-					if InStr(ctrl.Name, "IconButton") = 0 {
-						fg := themeMap["ButtonTextColor"]
-					}
-					bg := themeMap["Background"]
-					opt := "Background" bg (fg ? " c" fg : "")
+                    fg := themeMap["ButtonTextColor"]
+                    bg := themeMap["Background"]
+                    opt := "Background" bg " c" fg
                 case "Edit", "Text":
-					if InStr(ctrl.Name, "DescriptionBox") = 0 {
-						bg := themeMap["Background"]
-						fg := themeMap["TextColor"]
-					} else {
-						bg := themeMap["DescriptionBoxColor"]
-						fg := themeMap["DescriptionBoxTextColor"]
-					}
+                    fg := themeMap["TextColor"]
+                    bg := themeMap["Background"]
                     opt := "Background" bg " c" fg
                 case "Progress":
                     fg := themeMap["ProgressBarColor"]
@@ -2757,14 +2345,10 @@ ApplyThemeToGui(guiObj, themeMap) {
             }
         }
     }
-
-	if guiObj.BackColor != themeMap["Background"]
-        guiObj.BackColor := themeMap["Background"]
 }
 
-SaveThemeToINI(themeMap, section, filePath := localScriptDir "\themes.ini") {
-	if !themeMap || !section || !filePath
-		return
+
+SaveThemeToINI(themeMap, section, filePath) {
     for key, value in themeMap
         IniWrite(value, filePath, section, key)
 }
@@ -2870,35 +2454,6 @@ debugNotif(msg := "1", title := "", options := "16", duration := 2) {
 	SendNotification(msg, title, options, duration)
 }
 
-MeasureWrappedTextHeight(ctrl, text) {
-	rc := Buffer(16, 0) ; RECT (left, top, right, bottom)
-	; Set width limit to control's client width
-	client := Buffer(16, 0)
-	DllCall("GetClientRect", "ptr", ctrl.Hwnd, "ptr", client)
-	clientW := NumGet(client, 8, "int")
-
-	; Initialize RECT with desired width and zero height
-	NumPut("int", 0, rc, 0)              ; left
-	NumPut("int", 0, rc, 4)              ; top
-	NumPut("int", clientW, rc, 8)        ; right
-	NumPut("int", 0, rc, 12)             ; bottom
-
-	hdc := DllCall("GetDC", "ptr", ctrl.Hwnd, "ptr")
-	hFont := SendMessage(0x31, 0, 0, ctrl)
-	if hFont
-		DllCall("SelectObject", "ptr", hdc, "ptr", hFont)
-
-	DT_WORDBREAK := 0x10
-	DT_CALCRECT := 0x400
-	flags := DT_WORDBREAK | DT_CALCRECT
-
-	DllCall("DrawText", "ptr", hdc, "str", text, "int", -1, "ptr", rc, "uint", flags)
-	DllCall("ReleaseDC", "ptr", ctrl.Hwnd, "ptr", hdc)
-
-	; Height = bottom - top
-	return NumGet(rc, 12, "int") - NumGet(rc, 4, "int")
-}
-
 ; ################################ ;
 ; ######### Math Library ######### ;
 ; ################################ ;
@@ -2912,34 +2467,6 @@ class math {
 ; ################################ ;
 ; ####### Extra Functions ######## ;
 ; ################################ ;
-IsWindowVisibleToUser(hWnd) {
-	; Ensure it's a number and not null
-	if !IsInteger(hWnd) || hWnd = 0
-		return false
-
-	; Ensure the HWND exists and is a real window
-	if !DllCall("IsWindow", "ptr", hWnd)
-		return false
-
-	; Check visibility
-	return DllCall("IsWindowVisible", "ptr", hWnd, "int")
-}
-
-MeasureTextWidth(ctrl, text) {
-	static SIZE := Buffer(8, 0)  ; holds width (int32) and height (int32)
-	local L_hwnd := ctrl.Hwnd
-	hdc := DllCall("GetDC", "ptr", L_hwnd, "ptr")
-	
-	hFont := SendMessage(0x31, 0, 0, ctrl) ; WM_GETFONT
-	if hFont
-		DllCall("SelectObject", "ptr", hdc, "ptr", hFont)
-
-	DllCall("GetTextExtentPoint32", "ptr", hdc, "str", text, "int", StrLen(text), "ptr", SIZE)
-	DllCall("ReleaseDC", "ptr", L_hwnd, "ptr", hdc)
-
-	width := NumGet(SIZE, 0, "int")
-	return width
-}
 
 DownloadURL(url, filename := "") {
     local req, oStream, path, dir
@@ -2972,110 +2499,94 @@ DownloadURL(url, filename := "") {
     return path
 }
 
-loadProfileSettings(processName) {
-	global localScriptDir
-    global playSounds, isActive, isInStartFolder, isUIHidden
-    global MinutesToWait, SecondsToWait, MainUI_PosX, MainUI_PosY
-    global KeyToSend, currentTheme, AcceptedWarning, SettingsExists, ProfilesDir
-    if !IniSectionExists(ProfilesDir, processName) {
-        createDefaultProfileSettings(processName)
-    }
-
-	SettingsExists := readIniProfileSetting(ProfilesDir, processName, "Exists", "false")
-	AcceptedWarning := readIniProfileSetting(ProfilesDir, "General", "AcceptedWarning", "false")
-	playSounds := readIniProfileSetting(ProfilesDir, processName, "SoundMode", 1, "int")
-	isActive := readIniProfileSetting(ProfilesDir, processName, "isActive", 1, "int")
-	isInStartFolder := readIniProfileSetting(ProfilesDir, processName, "isInStartFolder", "false")
-	isUIHidden := readIniProfileSetting(ProfilesDir, processName, "isUIHidden", "false")
-	MinutesToWait := readIniProfileSetting(ProfilesDir, processName, "MinutesToWait", 15, "int")
-	SecondsToWait := readIniProfileSetting(ProfilesDir, processName, "SecondsToWait", MinutesToWait * 60, "int")
-	MainUI_PosX := readIniProfileSetting(ProfilesDir, processName, "MainUI_PosX", A_ScreenWidth / 2, "int")
-	MainUI_PosY := readIniProfileSetting(ProfilesDir, processName, "MainUI_PosY", A_ScreenHeight / 2, "int")
-	KeyToSend := readIniProfileSetting(ProfilesDir, processName, "KeyToSend", "~LButton")
-	currentTheme := readIniProfileSetting(ProfilesDir, processName, "SelectedTheme", "DarkMode")
-
-    updateGlobalThemeVariables(currentTheme)
+KeyExists(keyPath, data) {
+    ; check if the path is an ini file or a registry key
+	if (SubStr(keyPath, 1, 4) == "HKCU" or SubStr(keyPath, 1, 4) == "HKLM") {
+		try {
+			RegRead(keyPath, data)
+	
+			return true
+		} catch {
+			return false
+		}
+	}
+	else if (SubStr(keyPath, 1, 4) == "INI") {
+		try {
+			IniRead(keyPath, data)
+	
+			return true
+		} catch {
+			return false
+		}
+	}
 }
 
-saveProfileSettings(processName) {
-	global localScriptDir
-    global playSounds, isActive, isInStartFolder, isUIHidden
-    global MinutesToWait, SecondsToWait, MainUI_PosX, MainUI_PosY
-    global KeyToSend, currentTheme, AcceptedWarning, ProfilesDir, doMouseLock
-    IniWrite("true", ProfilesDir, processName, "Exists")
-    IniWrite(AcceptedWarning, ProfilesDir, "General", "AcceptedWarning")
-    IniWrite(playSounds, ProfilesDir, processName, "SoundMode")
-    IniWrite(isActive, ProfilesDir, processName, "isActive")
-    IniWrite(isInStartFolder, ProfilesDir, processName, "isInStartFolder")
-    IniWrite(isUIHidden, ProfilesDir, processName, "isUIHidden")
-    IniWrite(MinutesToWait, ProfilesDir, processName, "MinutesToWait")
-    IniWrite(SecondsToWait, ProfilesDir, processName, "SecondsToWait")
-    IniWrite(MainUI_PosX, ProfilesDir, processName, "MainUI_PosX")
-    IniWrite(MainUI_PosY, ProfilesDir, processName, "MainUI_PosY")
-    IniWrite(KeyToSend, ProfilesDir, processName, "KeyToSend")
-    IniWrite(currentTheme, ProfilesDir, processName, "SelectedTheme")
-	IniWrite(doMouseLock, ProfilesDir, processName, "doMouseLock")
-}
+checkForOldData(*) {
+	local oldKey := "HKCU\Software\AFKeebus"
+	local dataSets := [
+		"AlwaysOnTop",
+		"ClickRadius",
+		"ClickRateOffset",
+		"Cooldown",
+		"doMouseLock",
+		"isActive",
+		"MouseClicks",
+		"MouseSpeed",
+		"SecondsToWait",
+		"SoundMode"
+	]
 
-createDefaultProfileSettings(processName) {
-	global ProfilesDir
+	loop reg oldKey, 'R KV' {
+		if !KeyExists(RegKeyPath, A_LoopRegName) and dataSets.Has(A_LoopRegName) {
+			RegWrite(RegRead(oldKey,A_LoopRegName),A_LoopRegType,A_LoopRegName)
+		}
+	}
 
-	if !IniKeyExists(ProfilesDir, processName, "Exists")
-		IniWrite("true", ProfilesDir, processName, "Exists")
-	if !IniKeyExists(ProfilesDir, processName, "SoundMode")
-		IniWrite(1, ProfilesDir, processName, "SoundMode")
-	if !IniKeyExists(ProfilesDir, processName, "isActive")
-		IniWrite(1, ProfilesDir, processName, "isActive")
-	if !IniKeyExists(ProfilesDir, processName, "isInStartFolder")
-		IniWrite("false", ProfilesDir, processName, "isInStartFolder")
-	if !IniKeyExists(ProfilesDir, processName, "isUIHidden")
-		IniWrite("false", ProfilesDir, processName, "isUIHidden")
-	if !IniKeyExists(ProfilesDir, processName, "MinutesToWait")
-		IniWrite(15, ProfilesDir, processName, "MinutesToWait")
-	if !IniKeyExists(ProfilesDir, processName, "SecondsToWait")
-		IniWrite(15 * 60, ProfilesDir, processName, "SecondsToWait")
-	if !IniKeyExists(ProfilesDir, processName, "MainUI_PosX")
-		IniWrite(0, ProfilesDir, processName, "MainUI_PosX")
-	if !IniKeyExists(ProfilesDir, processName, "MainUI_PosY")
-		IniWrite(0, ProfilesDir, processName, "MainUI_PosY")
-	if !IniKeyExists(ProfilesDir, processName, "KeyToSend")
-		IniWrite("~LButton", ProfilesDir, processName, "KeyToSend")
-	if !IniKeyExists(ProfilesDir, processName, "SelectedTheme")
-		IniWrite("DarkMode", ProfilesDir, processName, "SelectedTheme")
-	if !IniKeyExists(ProfilesDir, processName, "doMouseLock")
-		IniWrite("false", ProfilesDir, processName, "doMouseLock")
-	if !IniKeyExists(ProfilesDir, processName, "MouseSpeed")
-		IniWrite(0, ProfilesDir, processName, "MouseSpeed")
-	if !IniKeyExists(ProfilesDir, processName, "MouseClickRateOffset")
-		IniWrite(0, ProfilesDir, processName, "MouseClickRateOffset")
-	if !IniKeyExists(ProfilesDir, processName, "MouseClickRadius")
-		IniWrite(0, ProfilesDir, processName, "MouseClickRadius")
-}
-
-SetSelectedProcessName(name) {
-	global ProfilesDir, SelectedProcessExe
-    updateIniProfileSetting(ProfilesDir, "SelectedProcessExe", "Process", name)
-}
-
-GetSelectedProcessName() {
-	global ProfilesDir
-	if !IniSectionExists(ProfilesDir, "SelectedProcessExe")
-		updateIniProfileSetting(ProfilesDir, "SelectedProcessExe", "Process", "RobloxPlayerBeta.exe")
-    return readIniProfileSetting(ProfilesDir, "SelectedProcessExe", "Process", "RobloxPlayerBeta.exe")
-}
-
-IniKeyExists(filePath, section, key) {
-    return IniRead(filePath, section, key, "__MISSING__") != "__MISSING__"
+	try RegDeleteKey(oldKey)
 }
 
 createDefaultSettingsData(*) {
-    global selectedProcessExe, ProfilesDir
+	global SettingsExists
+    global AcceptedWarning
+	global playSounds
+	global isActive
+	global isInStartFolder
+	global isUIHidden
+	global MinutesToWait
+	global SecondsToWait
+	global MainUI_PosX
+	global MainUI_PosY
+	global KeyToSend
+	global currentTheme
 
-	if !IniKeyExists(ProfilesDir, "General", "AcceptedWarning")
-		IniWrite("false", ProfilesDir, "General", "AcceptedWarning")
-	
-    selectedExe := GetSelectedProcessName()
-	loadProfileSettings(selectedExe)
+	if not SettingsExists {
+        RegWrite(true, "REG_DWORD", RegKeyPath, "Exists")
+		RegWrite(false, "REG_DWORD", RegKeyPath, "AcceptedWarning")
+		RegWrite(1, "REG_DWORD", RegKeyPath, "SoundMode")
+		RegWrite(1, "REG_DWORD", RegKeyPath, "isActive")
+		RegWrite(false, "REG_DWORD", RegKeyPath, "isInStartFolder")
+		RegWrite(false, "REG_DWORD", RegKeyPath, "isUIHidden")
+		RegWrite(15, "REG_DWORD", RegKeyPath, "Cooldown")
+		RegWrite(15 * 60, "REG_DWORD", RegKeyPath, "SecondsToWait")
+		RegWrite(0, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+		RegWrite(0, "REG_DWORD", RegKeyPath, "MainUI_PosY")
+		RegWrite("~LButton", "REG_SZ", RegKeyPath, "KeyToSend")
+		RegWrite("DarkMode", "REG_SZ", RegKeyPath, "SelectedTheme")
+	}
+    
+	SettingsExists := RegRead(RegKeyPath, "Exists", false)
+	AcceptedWarning := RegRead(RegKeyPath, "AcceptedWarning", false)
+	playSounds := RegRead(RegKeyPath, "SoundMode", 1)
+	isActive := RegRead(RegKeyPath, "isActive", 1)
+	isInStartFolder := RegRead(RegKeyPath, "isInStartFolder", false)
+	isUIHidden := RegRead(RegKeyPath, "isUIHidden", false)
+	MinutesToWait := RegRead(RegKeyPath, "Cooldown", 15)
+	SecondsToWait := RegRead(RegKeyPath, "SecondsToWait", MinutesToWait * 60)
+	MainUI_PosX := RegRead(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
+	MainUI_PosY := RegRead(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
+	KeyToSend := RegRead(RegKeyPath, "KeyToSend", "LButton")
+
+	updateGlobalThemeVariables(RegRead(RegKeyPath, "SelectedTheme", "DarkMode"))
 }
 
 AutoUpdate(*) {
@@ -3116,20 +2627,16 @@ setTrayIcon(icon := "") {
 		currentIcon := icon
 		; tell Windows to swap in the new .ico
 		global MainUI
-		global MainUI_Warning
-		if MainUI or MainUI_Warning
+		if MainUI
 			UpdateGuiIcon(icon)
 	}
 }
 
 UpdateGuiIcon(newIconPath) {
-	global MainUI
-	global MainUI_Warning
-	local MainUI_ID := MainUI and MainUI.Hwnd or ""
-	local MainUI_Warning_ID := MainUI_Warning and MainUI_Warning.Hwnd or ""
-    if !MainUI_ID && !MainUI_Warning_ID
-        throw Error("No user interface found to update icon.")
-	
+	global hwnd
+    if !hwnd
+        throw Error("MainUI not available")
+
     if !FileExist(newIconPath)
         throw Error("Icon file not found: " newIconPath)
 
@@ -3147,38 +2654,21 @@ UpdateGuiIcon(newIconPath) {
         throw Error("Failed to load icon: " newIconPath)
 
     ; call SendMessageW directly:
-	if MainUI_ID
-		for wParam in [0, 1]  ; ICON_SMALL, ICON_BIG
-			DllCall("SendMessageW"
-			, "Ptr", MainUI_ID
-			, "UInt", 0x80      ; WM_SETICON
-			, "Ptr", wParam
-			, "Ptr", hIcon
-			)
-	if MainUI_Warning_ID
-		for wParam in [0, 1]  ; ICON_SMALL, ICON_BIG
-		DllCall("SendMessageW"
-			, "Ptr", MainUI_Warning_ID
-			, "UInt", 0x80      ; WM_SETICON
-			, "Ptr", wParam
-			, "Ptr", hIcon
-		)
-	
+    for wParam in [0, 1]  ; ICON_SMALL, ICON_BIG
+        DllCall("SendMessageW"
+          , "Ptr", hwnd
+          , "UInt", 0x80      ; WM_SETICON
+          , "Ptr", wParam
+          , "Ptr", hIcon
+        )
+
     ; same SetWindowPos to repaint
-	if MainUI_ID
-		DllCall("SetWindowPos"
-		, "Ptr", MainUI_ID
-		, "Ptr", 0
-		, "Int", 0, "Int", 0, "Int", 0, "Int", 0
-		, "UInt", 0x27
-		)
-	if MainUI_Warning_ID
-		DllCall("SetWindowPos"
-		, "Ptr", MainUI_Warning_ID
-		, "Ptr", 0
-		, "Int", 0, "Int", 0, "Int", 0, "Int", 0
-		, "UInt", 0x27
-		)
+    DllCall("SetWindowPos"
+      , "Ptr", hwnd
+      , "Ptr", 0
+      , "Int", 0, "Int", 0, "Int", 0, "Int", 0
+      , "UInt", 0x27
+    )
 
     return true
 }
@@ -3192,7 +2682,7 @@ createDefaultDirectories(*) {
 
 	if !FileExist(localScriptDir "\images\icons")
 		DirCreate(localScriptDir "\images\icons")
-
+	
 	for i,IconData in icons {
 		if !FileExist(IconData.Icon)
 			DownloadURL(IconData.URL, IconData.Icon)
@@ -3207,56 +2697,18 @@ IsAltTabOpen() {
     ) != 0
 }
 
-readIniProfileSetting(filePath, section, key, default := "", type := "") {
-    if !FileExist(filePath)
-        return default
-
-    value := IniRead(filePath, section, key, default)
-	
-    switch type {
-        case "bool":
-            return (value = "true" or value = 1 or value = "1")
-        case "int":
-            return Integer(value)
-        case "float":
-            return Number(value)
-        default:
-            return value
-    }
-
-	return value
-}
-
-EnsureDirectoryExists(filePath) {
-    SplitPath(filePath,, &dir)
-    if !DirExist(dir)
-        DirCreate(dir)
-}
-
-updateIniProfileSetting(filePath, section, key, value) {
-    EnsureDirectoryExists(filePath)
-
-    existing := IniRead(filePath, section, key, "")
-    if (existing != value)
-        IniWrite(value, filePath, section, key)
-}
-
-updateIniProfileSection(filePath, section, settingsMap) {
-    for key, val in settingsMap
-        updateIniProfileSetting(filePath, section, key, val)
-}
-
 WM_SYSCOMMAND_Handler(wParam, lParam, msgNum, hwnd) {
     global MainUI, MainUI_PosX, MainUI_PosY
-	global SelectedProcessExe, ProfilesDir, localScriptDir
     ; 0xF020 (SC_MINIMIZE) indicates the user is minimizing the window.
     if (wParam = 0xF020) {
         ; Save the current (restored) position before the minimize animation starts.
         pos := WinGetMinMax(MainUI.Title) != -1 and WinGetPos(&X := MainUI_PosX,&Y := MainUI_PosY,,,MainUI.Title)
 		pos := {X: X, Y: Y}
 
-		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", A_ScreenWidth / 2, "int")
-		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", A_ScreenHeight / 2, "int")
+		RegWrite(pos.X, "REG_DWORD", RegKeyPath, "MainUI_PosX")
+		RegWrite(pos.Y, "REG_DWORD", RegKeyPath, "MainUI_PosY")
+        MainUI_PosX := RegReadSigned(RegKeyPath, "MainUI_PosX", A_ScreenWidth / 2)
+        MainUI_PosY := RegReadSigned(RegKeyPath, "MainUI_PosY", A_ScreenHeight / 2)
     }
 }
 
@@ -3323,7 +2775,7 @@ SendNotification(msg := "", title := "", options := "", optionalCooldown := 0) {
 
 					DownloadURL(URL_SCRIPT, tempUpdateFile)
 				} catch {
-					try FileDelete(tempUpdateFile)
+					FileDelete(tempUpdateFile)
 					return SendNotification("JACS update failed to download... Continuing with onboard script", "JACS Update Failed")
 				}
 				if tempUpdateFile
@@ -3392,6 +2844,25 @@ LinkUseDefaultColor(CtrlObj, Use := True)
 	CtrlObj.Opt("+Redraw")
 }
 
+RegReadSigned(Key, ValueName, Default) {
+    Value := RegRead(Key, ValueName, Default)  ; Read value from the registry
+
+    if (Value > 0x7FFFFFFF) {  ; If it's an incorrectly stored unsigned 32-bit integer
+        Value := -(0xFFFFFFFF - Value + 1)  ; Convert it to a signed 32-bit integer
+    }
+
+    return Value
+}
+
+RegWriteSigned(Key, ValueName, Value) {
+    ; If the value is negative, convert it to its unsigned 32-bit equivalent
+    if (Value < 0)
+        Value := 0x100000000 + Value  ; 0x100000000 is 2^32
+
+    ; Write the (now unsigned) value to the registry
+    RegWrite(Key, ValueName, Value)
+}
+
 ToggleHide_Hotkey(*) {
 	global isUIHidden
 	if isUIHidden == ""
@@ -3434,14 +2905,6 @@ ColorizeCredits(creditsLinkCtrl) {
     if (Round(Credits_CurrentColor.R) = Credits_TargetColor.R && Round(Credits_CurrentColor.G) = Credits_TargetColor.G && Round(Credits_CurrentColor.B) = Credits_TargetColor.B) {
         Credits_TargetColor := {R: Random(10, 99), G: Random(10, 99), B: Random(10, 99)}
     }
-}
-
-ArrayHasValue(arr, val) {
-	for each, v in arr {
-		if (v == val)
-			return true
-	}
-	return false
 }
 
 ; Evaluate expressions in concatenated strings
@@ -3605,8 +3068,6 @@ ShowPatchNotesGUI(release := "latest") {
 	local BodyBox := PatchUI.Add("Edit", "xs y+20 vPatchnotes VScroll Section ReadOnly h" (Popout_Height-PatchUI.MarginY) - addedHeight " w" Popout_Width-PatchUI.MarginX, patchNotes["body"])
 	BodyBox.SetFont("s14 w600", "Consolas")
 	BodyBox.Opt("Background555555" . " c" ControlTextColor)
-	
-	SelectNewOption()
 
 	; Calculate center position
 	PatchUI.Show("AutoSize")
@@ -3765,7 +3226,7 @@ WaitForKeyPress(optionalGUI := "") {
     ; — Try to register & save it
     try {
         RegisterHotkey(local_hotkey)
-        ; WriteHotkeyToRegistry(local_hotkey)
+        WriteHotkeyToRegistry(local_hotkey)
         ToolTip("Bound to: " local_hotkey)
     } catch {
         ToolTip("Invalid hotkey: " local_hotkey)
@@ -3844,7 +3305,7 @@ old_WaitForKeyPress(optionalGUI := "") {
     ; — Attempt to register & persist the hotkey
     try {
         RegisterHotkey(local_hotkey)
-        ; WriteHotkeyToRegistry(local_hotkey)
+        WriteHotkeyToRegistry(local_hotkey)
         ToolTip("Bound to: " local_hotkey)
     } catch {
         ToolTip("Invalid hotkey: " local_hotkey)
@@ -3873,6 +3334,16 @@ JoinArray(arr, delim := "") {
 ; ###################### ;
 ; ###### Registry ###### ;
 ; ###################### ;
+ReadHotkeyFromRegistry(*) {
+    try return RegRead(RegKeyPath, "Hotkey")
+    catch {
+		return "Alt+Backspace" ; Default fallback
+	}
+}
+
+WriteHotkeyToRegistry(hotkey, path := RegKeyPath) {
+    RegWrite(hotkey, "REG_SZ", path, "Hotkey")
+}
 
 global Keys := Map()
 
