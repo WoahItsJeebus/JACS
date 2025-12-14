@@ -5,9 +5,11 @@
 ; Simplified Launcher for GitHub-updated AHK Script
 ; -------------------------------
 
+global ProjectAcronym := "JUMP"
+
 ; Define local script path
 A_LocalAppData := EnvGet("LOCALAPPDATA")
-localScriptPath := A_LocalAppData "\JACS\JACS.ahk"
+localScriptPath := A_LocalAppData "\" ProjectAcronym "\" ProjectAcronym ".ahk"
 
 ; Check for an existing local script & extract its version
 if FileExist(localScriptPath) {
@@ -22,7 +24,7 @@ if FileExist(localScriptPath) {
 }
 
 ; Get the latest release tag from GitHub
-latestVersion := GetGitHubReleaseInfo("WoahItsJeebus", "JACS")["tag"]
+latestVersion := GetGitHubReleaseInfo("WoahItsJeebus", "" ProjectAcronym "")["tag"]
 
 if (latestVersion = "") {
     MsgBox "Failed to retrieve the latest version information. Please check your connection."
@@ -45,7 +47,7 @@ IsVersionNewer(localversion, latest) {
 
 if (localVersion = "" or IsVersionNewer(localVersion, latestVersion)) {
     ; Download the updated script
-    newScriptURL := "https://github.com/WoahItsJeebus/JACS/releases/latest/download/JACS.ahk"
+    newScriptURL := "https://github.com/WoahItsJeebus/" ProjectAcronym "/releases/latest/download/" ProjectAcronym ".ahk"
     tempFilePath := A_Temp "\temp_script.ahk"
     
     try {
@@ -55,8 +57,8 @@ if (localVersion = "" or IsVersionNewer(localVersion, latestVersion)) {
         ExitApp()
     }
     
-    if !FileExist(A_LocalAppData "\JACS")
-        DirCreate(A_LocalAppData "\JACS")
+    if !FileExist(A_LocalAppData "\" ProjectAcronym "")
+        DirCreate(A_LocalAppData "\" ProjectAcronym "")
 
     FileCopy(tempFilePath, localScriptPath, true)
     FileDelete(tempFilePath)
