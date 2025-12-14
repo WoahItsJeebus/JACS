@@ -2751,4 +2751,3 @@ enableHotkey(keyName?, bind?) {
 }
 
 enableAllHotkeys()
-#Include ..\2.0.0\JACS.ahk
