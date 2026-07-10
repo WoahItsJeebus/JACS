@@ -131,12 +131,17 @@ global MainUI_Monitor := monitorNum
 global isUIHidden := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isUIHidden", false, "bool")
 global MainUI_Disabled := false
 
-global UI_Width := "400"
+global UI_Width := "500"
 global UI_Height := "350"
+
+; Main content layout tuning (right side of the window, excluding the icon sidebar)
+; Adjust these two values to tune left/right padding of the main content region.
+; Defaults are set to roughly center content inside the right 95% of the window.
+global MainContentPadLeft := 8
+global MainContentPadRight := 0
 
 ; Caches
 global tips := []  ; Will be populated from tips.ahk or defaults if it fails
-global ProcessWindowCache := Map()
 
 ; Core UI
 global MainUI_BG := ""
@@ -373,6 +378,7 @@ createWarningUI(requested := false) {
 CreateGui(*) {
 	global MainUI
 	global MainUI_Warning
+	global iconButtons
 	
 	global isActive
 	global MainUI_BG
@@ -385,6 +391,11 @@ CreateGui(*) {
 
 	local MarginX := 10
 	local MarginY := 10
+
+	; Stop sidebar hover polling while controls are being rebuilt.
+	SetTimer(CheckSidebarHover, 0)
+	SetTimer(ScrollTip, 0)
+	iconButtons := []
 
 	; Destroy old UI object
 	if MainUI {
@@ -410,9 +421,10 @@ CreateGui(*) {
     ; UpdateTimerLabel()
 	addTipBox()
 	
+	; Apply theme before first show to avoid startup flash with default styles.
+	CheckDeviceTheme()
 	updateUIVisibility()
 	ClampMainUIPos()
-	SaveMainUIPosition()
 	setTrayIcon(icons[isActive].Icon)
 
 	if playSounds == 1
@@ -420,8 +432,6 @@ CreateGui(*) {
 			SoundBeep(300, 200)
 	
 	runNecessaryTimers()
-	
-	CheckDeviceTheme()
 
 	if isActive > 1
 		ToggleCore(,isActive)
@@ -494,6 +504,7 @@ addTipBox(*) {
 	TipScrollData[MainUI] := Map(
 		"Ctrl", tipBox,
 		"Offset", 10,
+		"Width", UI_Margin_Width,
 		"CurrentText", "",
 		"TipList", tips,  ; ← Uses dynamic global list
 		"LastIndexes", []
@@ -506,43 +517,53 @@ createMainButtons(*) {
 	global MainUI, intWindowColor, intControlColor, ControlTextColor, linkColor, ProfilesDir
 	global UI_Width, UI_Height, ICON_WIDTH, ICON_SPACING, BUTTON_HEIGHT, HeaderHeight, tipHeight
 	global buttonFontSize, buttonFontWeight, buttonFont, buttonHeight
-	global SelectedProcessExe, ProcessWindowCache
+	global MainContentPadLeft, MainContentPadRight
+	global SelectedProcessExe
 	
 	local UI_Margin_Width := UI_Width-MainUI.MarginX
 	local UI_Margin_Height := UI_Height-MainUI.MarginY
+	local sideBarRight := MainUI.MarginX + ICON_WIDTH
+	local rightPanelLeft := sideBarRight + MainContentPadLeft
+	local rightPanelRight := (UI_Width - MainUI.MarginX) - MainContentPadRight
+	local rightPanelWidth := math.clamp(rightPanelRight - rightPanelLeft, 120, math.huge())
+	local contentWidth := rightPanelWidth
+	local contentX := rightPanelLeft
+	local coreButtonWidth := Round(contentWidth * 0.70)
+	local coreButtonX := contentX + Floor((contentWidth - coreButtonWidth) / 2)
+	local resetButtonWidth := Round(contentWidth * 0.40)
+	local resetButtonX := contentX + Floor((contentWidth - resetButtonWidth) / 2)
 
-	local Header := MainUI.Add("Text","x" ICON_WIDTH " y+" tipHeight+MainUI.MarginY " Section Center vMainHeader cff4840 h" math.clamp(HeaderHeight, 30, math.huge()) " w" UI_Width,"Jeebus' Auto-Clicker — V" version)
+	local Header := MainUI.Add("Text", "x" contentX " y+" tipHeight+MainUI.MarginY " Section Center vMainHeader cff4840 h" math.clamp(HeaderHeight, 30, math.huge()) " w" contentWidth, "Jeebus' Auto-Clicker — V" version)
 
 	; ########################
 	; 		  Buttons
 	; ########################
 
 	global activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
-	global CoreToggleButton := MainUI.Add("Button", "xs+" ICON_WIDTH + UI_Width/6 " h30 w" (UI_Margin_Width*0.75)-ICON_WIDTH, "Auto-Clicker: " activeText_Core)
+	global CoreToggleButton := MainUI.Add("Button", "x" coreButtonX " h30 w" coreButtonWidth, "Auto-Clicker: " activeText_Core)
 	CoreToggleButton.OnEvent("Click", ToggleCore)
 
 	; Reset Cooldown
-	global ResetCooldownButton := MainUI.Add("Button", "x" (ICON_WIDTH*2) + UI_Margin_Width*0.375 " h30 w" UI_Margin_Width/4, "Reset")
+	global ResetCooldownButton := MainUI.Add("Button", "x" resetButtonX " h30 w" resetButtonWidth, "Reset")
 	ResetCooldownButton.OnEvent("Click", (*) => (
-		ResetCooldown(ProcessWindowCache[SelectedProcessExe])
+		ResetCooldown()
 	))
 
-	SeparationLine := MainUI.Add("Text", "Section x" ICON_WIDTH*2 " 0x7 h1 w" UI_Margin_Width) ; Separation Space
+	SeparationLine := MainUI.Add("Text", "Section x" contentX " 0x7 h1 w" contentWidth) ; Separation Space
 	SeparationLine.BackColor := "0x8"
 	
 	; Progress Bar
-	; local allProcessKeys := ProcessWindowCache[SelectedProcessExe]
-	global ID_SelectorLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " y+0 Center vID_SelectorLabel h" buttonHeight " w" UI_Margin_Width, SelectedProcessExe)
-	; global ID_Selector := MainUI.Add("DropDownList", "x" ICON_WIDTH*2 " y+0 Center vID_Selector R10 h" buttonHeight " w" UI_Margin_Width " Choose1", allProcessKeys)
-	global WaitTimerLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " vWaitTimerLabel Center 0x300 0xC00 h20 w" UI_Margin_Width, "0%")
-	global WaitProgress := MainUI.Add("Progress", "x" ICON_WIDTH*2 " vWaitProgress Center h40 w" UI_Margin_Width)
-	global ElapsedTimeLabel := MainUI.Add("Text", "x" ICON_WIDTH*2 " vElapsedTimeLabel Center 0x300 0xC00 h20 w" UI_Margin_Width, "00:00 / 0 min")
+	global ID_SelectorLabel := MainUI.Add("Text", "x" contentX " y+0 Center vID_SelectorLabel h" buttonHeight " w" contentWidth, SelectedProcessExe)
+	; global ID_Selector := MainUI.Add("DropDownList", "x" contentX " y+0 Center vID_Selector R10 h" buttonHeight " w" contentWidth " Choose1", allProcessKeys)
+	global WaitTimerLabel := MainUI.Add("Text", "x" contentX " vWaitTimerLabel Center 0x300 0xC00 h20 w" contentWidth, "0%")
+	global WaitProgress := MainUI.Add("Progress", "x" contentX " vWaitProgress Center h40 w" contentWidth)
+	global ElapsedTimeLabel := MainUI.Add("Text", "x" contentX " vElapsedTimeLabel Center 0x300 0xC00 h20 w" contentWidth, "00:00 / 0 min")
 	
 	; Credits
-	global CreditsLink := MainUI.Add("Link","c" linkColor . " Left h" buttonHeight " w" UI_Margin_Width, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
+	global CreditsLink := MainUI.Add("Link", "x" contentX " c" linkColor . " Left h" buttonHeight " w" contentWidth, 'Created by <a href="https://www.roblox.com/users/3817884/profile">@WoahItsJeebus</a>')
 	; Move credits link to bottom of UI_Height
 	local creditsY := UI_Height + (MainUI.MarginY - HeaderHeight - (tipHeight*1.5))
-	CreditsLink.Move(ICON_WIDTH*2, UI_Margin_Height - buttonHeight - MainUI.MarginY)
+	CreditsLink.Move(contentX, UI_Margin_Height - buttonHeight - MainUI.MarginY, contentWidth)
 	LinkUseDefaultColor(CreditsLink)
 
 	CoreToggleButton.Opt("Background" intWindowColor)
@@ -850,7 +871,7 @@ CreateWindowSettingsGUI(*) {
 		local targetControl := ""
 
 		if HoverControl && HoverWindow && HoverWindow {
-			if HoverWindow != WindowSettingsUI.Hwnd
+			if WindowSettingsUI && HoverWindow != WindowSettingsUI.Hwnd
 				return
 
 			try targetControl := WindowSettingsUI.__Item[HoverControl]
@@ -1718,28 +1739,24 @@ UpdateTimerLabel(*) {
 	global isActive
 	global MinutesToWait
 	global SecondsToWait
-	global lastUpdateTimes
+	global lastUpdateTime
 
 	global ElapsedTimeLabel
 	global WaitProgress
 	global WaitTimerLabel
-	global ID_Selector
-	global SelectedProcessExe
-	
-	local ID := (ID_Selector and ID_Selector.Text) ? ID_Selector.Text : SelectedProcessExe
-	if !lastUpdateTimes.Has(ID) or (lastUpdateTimes.Has(ID) and isActive == 1){
-		lastUpdateTimes.Set(ID, tick())
-		SendNotification("Updated lastUpdateTimes for ID: " ID " to " lastUpdateTimes.Get(ID))
-	}
-	
 	global ID_SelectorLabel
+	global SelectedProcessExe
+
+	if isActive == 1
+		lastUpdateTime := A_TickCount
+
 	if ID_SelectorLabel and ID_SelectorLabel.Text != SelectedProcessExe
 		ID_SelectorLabel.Text := SelectedProcessExe
 
 	; Calculate and update progress bar
-    secondsPassed := (tick() - lastUpdateTimes[ID])  ; Convert ms to seconds
+	secondsPassed := (A_TickCount - lastUpdateTime) / 1000
 	
-    finalProgress := Round((MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / SecondsToWait) * 100, 0)
+	finalProgress := Round((MinutesToWait == 0 and SecondsToWait == 0) and 100 or (secondsPassed / (SecondsToWait > 0 ? SecondsToWait : 1)) * 100, 0)
 	
 	; Calculate and format CurrentElapsedTime as MM:SS
     currentMinutes := Floor(secondsPassed / 60)
@@ -1763,8 +1780,8 @@ UpdateTimerLabel(*) {
 		WaitTimerLabel.Text := finalText
 }
 
-ResetCooldown(ID) {
-	global CoreToggleButton, ElapsedTimeLabel, WaitProgress, WaitTimerLabel, activeText_Core, lastUpdateTimes, ID_Selector
+ResetCooldown(*) {
+	global CoreToggleButton, ElapsedTimeLabel, WaitProgress, WaitTimerLabel, activeText_Core, lastUpdateTime
 	global SelectedProcessExe
 
 	activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
@@ -1772,7 +1789,7 @@ ResetCooldown(ID) {
 	if CoreToggleButton and CoreToggleButton.Text != "Auto-Clicker: " activeText_Core
 		CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
 
-	lastUpdateTimes.Set(ID, tick())
+	lastUpdateTime := A_TickCount
 
 	if isActive == 2 and FindTargetHWND()
 		ToggleCore(,3)
@@ -1801,40 +1818,42 @@ switchActiveState(*) {
 ; ############################### ;
 ; ######## Core Function ######## ;
 ; ############################### ;
-
 ToggleCore(optionalControl?, forceState?, *) {
 	; Variables
 	global isActive
 	global FirstRun
+	global cooldownToggleDebounce
 	global activeText_Core
 	global CoreToggleButton
 	global ProfilesDir
 	global SelectedProcessExe
-	global cooldownToggleDebounce
 
 	if cooldownToggleDebounce and isActive != 2
 		return
 
-	cooldownToggleDebounce := true	
-	SetTimer((*) => (
-		cooldownToggleDebounce := false
-	), 1000)
-
 	local newMode := forceState or switchActiveState()
-	
 	updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "isActive", newMode)
+	isActive := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isActive", 1, "int")
 
-	isActive := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "isActive", 0, "int")
 	activeText_Core := (isActive == 3 and "Enabled") or (isActive == 2 and "Waiting...") or "Disabled"
 	
 	if CoreToggleButton and CoreToggleButton.Text != "Auto-Clicker: " activeText_Core
 		CoreToggleButton.Text := "Auto-Clicker: " activeText_Core
 
 	setTrayIcon(icons[isActive].Icon)
+	ResetCooldown()
 	UpdateTimerLabel()
+
+	if isActive > 1 {
+		FirstRun := True
+		return SetTimer(RunCore, 100)
+	}
+
+	return SetTimer(RunCore, 0)
 }
 
-RunCore(ID := SelectedProcessExe, FirstRun := false) {
+RunCore(*) {
+	global FirstRun
 	global playSounds
 	global isActive
 
@@ -1848,24 +1867,23 @@ RunCore(ID := SelectedProcessExe, FirstRun := false) {
 
 	global LastActiveWindow
 	global doMouseLock
-	global lastUpdateTimes
-	
-	local secondsPassed := (tick() - (lastUpdateTimes.Has(ID) and lastUpdateTimes[ID] or tick()))  ; Convert ms to seconds
-	local isCompleted := (secondsPassed / SecondsToWait) >= 1
 
 	; Check for process
 	if !FindTargetHWND()
-		ResetCooldown(ID)
+		ResetCooldown()
 	; 	ToggleCore(, 2)
 	
 	; Check if the toggle has been switched off
 	if isActive == 1
 		return
 
-	if (FirstRun or isCompleted) and (ID or FindTargetHWND()) {
-		ResetCooldown(ID)
+	if (FirstRun or (WaitProgress and WaitProgress.Value >= 100)) and FindTargetHWND() {
+		if FirstRun
+			FirstRun := False
 
-		if IsAltTabOpen() or (SecondsToWait < 10 and SelectedProcessExe and !WinActive(SelectedProcessExe))
+		ResetCooldown()
+
+		if IsAltTabOpen() or (SecondsToWait < 10 and SelectedProcessExe and !WinActive("ahk_exe " SelectedProcessExe))
 			return
 		
 		if playSounds == 1
@@ -1890,9 +1908,9 @@ RunCore(ID := SelectedProcessExe, FirstRun := false) {
 			BlockInput("MouseMove")
 		}
 
-		; Find and activate process(es)
-		
-		ClickWindow(ID)
+		; Find and activate process
+		local targetProcess := FindTargetHWND()
+		try ClickWindow(targetProcess)
 		
 		; Activate previous application window & reposition mouse
 		local lastActiveWindowID := ""
@@ -1909,8 +1927,7 @@ RunCore(ID := SelectedProcessExe, FirstRun := false) {
 		if (MinutesToWait > 0 or SecondsToWait > 0) and WaitProgress
 			WaitProgress.Value := 0
 
-		lastUpdateTimes[ID] := tick()
-		; lastUpdateTime := A_TickCount
+		lastUpdateTime := A_TickCount
 	}
 	
 	; Unblock Inputs
@@ -2134,8 +2151,12 @@ LoadNewTip(*) {
 	if initializing
 		return
 	UpdateTipsFile()
-	global tips, tipHeight
+	global tips, tipHeight, TipScrollData, MainUI
+	if !MainUI || !IsSet(TipScrollData) || !TipScrollData.Has(MainUI)
+		return
 	data := TipScrollData[MainUI]
+	if !data.Has("Ctrl")
+		return
 	
 	tips := data["TipList"]
 	lastIndexes := data["LastIndexes"]
@@ -2144,9 +2165,7 @@ LoadNewTip(*) {
 		data["Ctrl"].Text := "No tips available."
 		data["CurrentText"] := "No tips available."
 		data["Offset"] := UI_Width + 100
-		
-		width := MeasureTextWidth(data["Ctrl"], "No tips available.")
-		data["Ctrl"].Move(UI_Width + 100,10, width, tipHeight)
+		data["Ctrl"].Move(UI_Width + 100, 10, data["Width"], tipHeight)
 		return
 	}
 
@@ -2174,9 +2193,7 @@ LoadNewTip(*) {
 	data["Ctrl"].Text := text
 	data["CurrentText"] := text
 	data["Offset"] := UI_Width + 100
-	
-	width := MeasureTextWidth(data["Ctrl"], text)
-	data["Ctrl"].Move(UI_Width + 100,10, width, tipHeight)
+	data["Ctrl"].Move(UI_Width + 100, 10, data["Width"], tipHeight)
 
 	lastIndexes.Push(choice.tip)
 	if lastIndexes.Length > maxHistory
@@ -2222,6 +2239,8 @@ UpdateTipsFile(*) {
 
 UpdateAllTipBoxes(*) {
 	global TipScrollData, tips
+	if !IsSet(TipScrollData)
+		return
 
 	for hwnd, data in TipScrollData {
 		data["TipList"] := tips
@@ -2233,15 +2252,22 @@ ScrollTip(*) {
 	global initializing
 	if initializing
 		return
+	global TipScrollData, MainUI
+	if !MainUI || !IsSet(TipScrollData) || !TipScrollData.Has(MainUI)
+		return
 
 	data := TipScrollData[MainUI]
+	if !data.Has("Ctrl")
+		return
 	ctrl := data["Ctrl"]
 	text := data["CurrentText"]
 	offset := data["Offset"]
 
 	; Move leftward
 	offset -= 1
-	ctrl.Move(offset)
+	try ctrl.Move(offset)
+	catch
+		return
 
 	; When it fully scrolls off screen, reset position
 
@@ -2259,11 +2285,33 @@ ScrollTip(*) {
 
 CheckSidebarHover() {
 	global iconButtons, currentTooltipIndex, ProfilesDir
+	global MainUI
+
+	if !MainUI {
+		if currentTooltipIndex != 0 {
+			ToolTip()
+			currentTooltipIndex := 0
+		}
+		return
+	}
+
+	if !IsSet(iconButtons) || iconButtons.Length = 0 {
+		if currentTooltipIndex != 0 {
+			ToolTip()
+			currentTooltipIndex := 0
+		}
+		return
+	}
 
 	MouseGetPos &mx, &my, &winHwnd, &ctrlHwnd, 2
 
 	for idx, btnData in iconButtons {
-		if ctrlHwnd = btnData.control.Hwnd {
+		local btnHwnd := 0
+		try btnHwnd := btnData.control.Hwnd
+		catch
+			continue
+
+		if ctrlHwnd && btnHwnd && ctrlHwnd = btnHwnd {
 			if currentTooltipIndex != idx {
 				ToolTip(btnData.tooltip)
 				currentTooltipIndex := idx
@@ -2302,191 +2350,179 @@ SendNotification(message, config := Map(
 	"Duration", 4000,
 	"Title", "JACS - Notification"
 )) {
-	static notificationQueue := Map()				; Pending notifications (unique key → data)
-	static notificationQueueKeys := []				; FIFO list of queued keys
-	static closeFunctions := Map()					; Timers for closing
-	static themeFunctions := Map()					; Timers for theme updates
-	static slotAssignments := Map()					; hwnd → slotIndex
-	static notificationGUIs := []					; Active notification windows
-	static notificationCounter := 0					; Unique counter for queue keys
-	static slotStates := [false, false, false]		; Slot availability (3 slots)
+	static notificationGUIs := []
+	static styleConfig := Map(
+		"HeaderColor", "ff9696",
+		"BodyColor", intWindowColor,
+		"HighlightColor", linkColor,
+		"HeaderFont", "Ink Free",
+		"BodyFont", buttonFont,
+		"HeaderFontWeight", 600,
+		"BodyFontWeight", buttonFontWeight,
+		"HeaderFontSize", 14,
+		"BodyFontSize", buttonFontSize,
+		"ButtonFontSize", buttonFontSize,
+		"ButtonHeight", 25
+	)
+	static defaultOptions := Map(
+		"Type", "info",
+		"OnYes", "", "OnNo", "",
+		"OnOk", "", "OnCancel", "", "OnClose", "",
+		"Duration", 4000,
+		"Timeout", 4000,
+		"Title", "JACS - Notification",
+		"Width", 350,
+		"Height", 150
+	)
 
-	global isActive
-	global intWindowColor, intControlColor, intProgressBarColor
-	global ControlTextColor, linkColor, HeaderHeight
-	global buttonHeight, buttonFontSize, buttonFontWeight, buttonFont
+	mergeMaps(baseMap, overrideMap) {
+		for key, value in overrideMap
+			baseMap[key] := value
+		return baseMap
+	}
 
-	local popupWidth := 300, popupHeight := 150
-	local popupMarginX := 10, popupMarginY := 10
+	options := mergeMaps(defaultOptions.Clone(), config)
+	options := mergeMaps(styleConfig.Clone(), options)
 
-	; Skip if already shown in active GUIs 
-	for _, hwnd in notificationGUIs {
-		if hwnd && WinExist(hwnd) {
-			ui := GuiFromHwnd(hwnd)
-			for _, ctrl in ui {
-				if ctrl.Type = "Text" && ctrl.Text == message
-					return
-			}
+	global intWindowColor
+	global ControlTextColor
+	global buttonFontSize, buttonFontWeight, buttonFont
+
+	local popupWidth := options.Has("Width") ? options["Width"] : 350
+	local popupHeight := options.Has("Height") ? options["Height"] : 150
+	local popupMarginX := 10
+	local popupMarginY := 10
+	local bodyFont := options["BodyFont"]
+	local headerFont := options["HeaderFont"]
+	local headerColor := options["HeaderColor"]
+	local highlightColor := options["HighlightColor"]
+	local headerFontWeight := options["HeaderFontWeight"]
+	local headerFontSize := options["HeaderFontSize"]
+	local bodyFontWeight := options["BodyFontWeight"]
+	local bodyFontSize := options["BodyFontSize"]
+	local localButtonFontSize := options["ButtonFontSize"]
+	local localButtonHeight := options["ButtonHeight"]
+	local type := StrLower(options["Type"])
+	local duration := options.Has("Duration") ? options["Duration"] : options["Timeout"]
+	if options.Has("Timeout") and !config.Has("Duration")
+		duration := options["Timeout"]
+	local title := options["Title"]
+	local onYes := options["OnYes"]
+	local onNo := options["OnNo"]
+	local onOk := options["OnOk"]
+	local onCancel := options["OnCancel"]
+	local onClose := options["OnClose"]
+
+	if notificationGUIs.Length >= 3
+		closeNotification(notificationGUIs[1])
+
+	for _, existingHwnd in notificationGUIs {
+		if existingHwnd && WinExist("ahk_id " existingHwnd) && IsWindowVisibleToUser(existingHwnd) {
+			WinGetPos(&x, &y, &w, &h, "ahk_id " existingHwnd)
+			try SlideGUI(existingHwnd, x, y - (h + (popupMarginY * 2)), 25)
 		}
 	}
 
-	; Skip if message is already queued 
-	for _, key in notificationQueueKeys {
-		if notificationQueue.Has(key) && notificationQueue[key]["Message"] == message
-			return
-	}
-
-	; If 3 active, queue instead 
-	if notificationGUIs.Length >= 3 {
-		notificationCounter += 1
-		uniqueKey := Format("{}_{}", A_TickCount, notificationCounter)
-		notificationQueue[uniqueKey] := Map("Message", message, "Config", config)
-		notificationQueueKeys.Push(uniqueKey)
-		return
-	}
-
-	; Find free visual slot (0 = none) 
-	local slotIndex := 0
-	for i, used in slotStates {
-		if !used {
-			slotIndex := i
-			break
-		}
-	}
-	if slotIndex = 0 {
-		notificationCounter += 1
-		uniqueKey := Format("{}_{}", A_TickCount, notificationCounter)
-		notificationQueue[uniqueKey] := Map("Message", message, "Config", config)
-		notificationQueueKeys.Push(uniqueKey)
-		return
-	}
-	slotStates[slotIndex] := true
-
-	; Config values 
-	local type     := config.Get("Type", "info")
-	local duration := config.Get("Duration", 4000)
-	local onYes    := config.Get("OnYes", "")
-	local onNo     := config.Get("OnNo", "")
-	local onOk     := config.Get("OnOk", "")
-	local onCancel := config.Get("OnCancel", "")
-	local onClose  := config.Get("OnClose", "")
-	local title    := config.Get("Title", "JACS")
-
-	; Create GUI 
-	MonitorGetWorkArea(1, &monLeft, &monTop, &monRight, &monBottom)
+	MonitorGetWorkArea(, &monLeft, &monTop, &monRight, &monBottom)
 	screenW := monRight - monLeft
 	screenH := monBottom - monTop
-	local shellX := monRight - popupWidth - 25
-	local shellY := screenH / 2
-	local slotYOffsets := [shellY + screenH * 0.25, shellY, shellY - screenH * 0.25]
-	shellY := slotYOffsets[slotIndex]
-	
-	NotiShellGui := Gui("+AlwaysOnTop -Caption +ToolWindow +LastFound")
-	NotiShellGui.BackColor := getActiveStatusColor()
-	NotiInnerGui := Gui("+Parent" NotiShellGui.Hwnd " -Caption +ToolWindow +LastFound +E0x20")
+
+	local NotiShellGui := Gui("+AlwaysOnTop +OwnDialogs -Caption +ToolWindow +LastFound")
+	local id := NotiShellGui.Hwnd
+	notificationGUIs.Push(id)
+
+	local NotiInnerGui := Gui("+Parent" NotiShellGui.Hwnd " -Caption +ToolWindow +LastFound +E0x20")
 	NotiInnerGui.MarginX := popupMarginX
 	NotiInnerGui.MarginY := popupMarginY
 	NotiInnerGui.BackColor := intWindowColor
-	NotiInnerGui.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
+	NotiInnerGui.SetFont("s" localButtonFontSize " c" ControlTextColor " w" bodyFontWeight, bodyFont)
 
-	id := NotiShellGui.Hwnd
-	notificationGUIs.Push(id)
-	slotAssignments[id] := slotIndex
+	local innerWidth := popupWidth - (popupMarginX * 2)
+	local titleY := popupMarginY / 2
+	local titleLabel := NotiInnerGui.Add("Text", "y" titleY " Center vNotificationTitle w" innerWidth * 0.95 " h" localButtonHeight, title)
+	local messageY := titleY + localButtonHeight + (popupMarginY / 2)
+	local messageBox := NotiInnerGui.Add("Text", "xm y" messageY " Center w" innerWidth - popupMarginX " h1", message)
+	titleLabel.SetFont("s" headerFontSize " c" headerColor " w" headerFontWeight, headerFont)
+	messageBox.SetFont("s" bodyFontSize " c" ControlTextColor " w" bodyFontWeight, bodyFont)
+	local messageHeight := Max(MeasureWrappedTextHeight(messageBox, message), MeasureTextHeight(messageBox))
+	messageBox.Move(,, , messageHeight)
 
-	NotiInnerGui.OnEvent("Escape", closeNotification)
-	NotiShellGui.OnEvent("Escape", closeNotification)
+	local buttonY := messageY + messageHeight + popupMarginY
+	local singleButtonX := innerWidth * 0.35
+	local singleButtonW := innerWidth * 0.25
+	local dualButtonW := (innerWidth - (NotiInnerGui.MarginX * 2.5)) / 2
 
-	innerW := popupWidth - (popupMarginX * 2)
-	titleLabel := NotiInnerGui.Add("Text", "vHeader" getUniqueID() " Center w" innerW - (popupMarginX * 2) " h" HeaderHeight, title)
-	titleLabel.SetFont("s16 c" ControlTextColor " w" buttonFontWeight, "Ink Free")
-
-	messageBox := NotiInnerGui.Add("Text", "vMessageBox Center xm w" innerW - (popupMarginX * 2), message)
-	messageBox.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-	
-	local totalButtons := type = "yesno" ? 2 : 1
-	size := getControlSize(messageBox)
-	local totalObjectsHeight := size.H + (buttonHeight*totalButtons) + HeaderHeight + (NotiShellGui.MarginY*2)
-	local FinalHeight := popupHeight + (totalObjectsHeight - popupHeight) + popupMarginY * 2
-
-	; Add buttons
-	btnY := FinalHeight - buttonHeight - popupMarginY
-	
-	singleW := innerW / 2.5
-	singleX := (innerW - singleW) / 2
-	doubleW := innerW / 3
-	doubleX1 := (innerW - doubleW * 2 - popupMarginX/2) / 2
-	doubleX2 := doubleX1 + doubleW + popupMarginX/2
-
+	local btnOk := "", btnYes := "", btnNo := "", btnCancel := "", btnClose := ""
 	if (type = "yesno") {
-		btnYes := NotiInnerGui.Add("Button","vInvisBG_Yes" getUniqueID() Format(" x{} y{} w{} h{}", doubleX1, btnY, doubleW, buttonHeight), "Yes")
-		btnNo  := NotiInnerGui.Add("Button","vInvisBG_No" getUniqueID() Format(" x{} y{} w{} h{}", doubleX2, btnY, doubleW, buttonHeight), "No")
-		btnYes.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-		btnNo.SetFont("s" buttonFontSize " c" ControlTextColor " w" buttonFontWeight, buttonFont)
-		btnYes.Opt("BackgroundTrans")
-		btnNo.Opt("BackgroundTrans")
-
-		btnYes.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onYes) ? onYes.Call() : ""))
-		btnNo.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onNo) ? onNo.Call() : ""))
+		btnYes := NotiInnerGui.Add("Button", "xm y" buttonY " h" localButtonHeight " w" dualButtonW, "Yes")
+		btnNo := NotiInnerGui.Add("Button", "x+m h" localButtonHeight " w" dualButtonW, "No")
+		btnYes.OnEvent("Click", (*) => (closeNotification(), (onYes is Func || onYes is BoundFunc) ? onYes.Call() : ""))
+		btnNo.OnEvent("Click", (*) => (closeNotification(), (onNo is Func || onNo is BoundFunc) ? onNo.Call() : ""))
 	} else if (type = "ok") {
-		btnOk := NotiInnerGui.Add("Button", "vInvisBG_Ok" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "OK")
-		btnOk.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onOk) ? onOk.Call() : ""))
+		btnOk := NotiInnerGui.Add("Button", "xm+" singleButtonX " y" buttonY " h" localButtonHeight " w" singleButtonW, "OK")
+		btnOk.OnEvent("Click", (*) => (closeNotification(), (onOk is Func || onOk is BoundFunc) ? onOk.Call() : ((onYes is Func || onYes is BoundFunc) ? onYes.Call() : "")))
 	} else if (type = "cancel") {
-		btnCancel := NotiInnerGui.Add("Button", "vInvisBG_Cancel" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Cancel")
-		btnCancel.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onCancel) ? onCancel.Call() : ""))
+		btnCancel := NotiInnerGui.Add("Button", "xm+" singleButtonX " y" buttonY " h" localButtonHeight " w" singleButtonW, "Cancel")
+		btnCancel.OnEvent("Click", (*) => (closeNotification(), (onCancel is Func || onCancel is BoundFunc) ? onCancel.Call() : ""))
+	} else if (type = "close") {
+		btnClose := NotiInnerGui.Add("Button", "Background" intWindowColor " xm+" singleButtonX " y" buttonY " h" localButtonHeight " w" singleButtonW, "Close")
+		btnClose.OnEvent("Click", (*) => (closeNotification(), (onClose is Func || onClose is BoundFunc) ? onClose.Call() : ""))
+		btnClose.SetFont("s" localButtonFontSize " c" ControlTextColor, bodyFont)
 	} else {
-		btnClose := NotiInnerGui.Add("Button", "vInvisBG_Close" getUniqueID() Format(" x{} y{} w{} h{}", singleX, btnY, singleW, buttonHeight), "Close")
-		btnClose.OnEvent("Click", (*) => (closeNotification(id), IsFunc(onClose) ? onClose.Call() : ""))
+		btnClose := NotiInnerGui.Add("Button", "Background" intWindowColor " xm+" singleButtonX " y" buttonY " h" localButtonHeight " w" singleButtonW, "OK")
+		btnClose.OnEvent("Click", (*) => (closeNotification(), (onClose is Func || onClose is BoundFunc) ? onClose.Call() : ""))
+		btnClose.SetFont("s" localButtonFontSize " c" ControlTextColor, bodyFont)
 	}
 
-	NotiShellGui.Show("NoActivate x" shellX " y" shellY " w" popupWidth " h" FinalHeight)
-	NotiInnerGui.Show("NoActivate w" innerW " h" FinalHeight)
+	local shellX := monRight - popupWidth - 25
+	local finalHeight := buttonY + ((btnNo || btnYes || btnOk || btnCancel || btnClose) ? localButtonHeight : 0) + popupMarginY
+	local shellY := monTop + ((screenH - finalHeight) / 1.25)
 
-	SetRoundedCorners(id, 16)
-	SetRoundedCorners(NotiInnerGui.Hwnd, 16)
-	ApplyThemeToGui(NotiInnerGui, LoadThemeFromINI(currentTheme))
-	WinSetTransparent(0, id)
-	SetTimer((*) => FadeWindow(id, "in", 500), -1, id)
-	themeFunctions[id] := SetTimer(() => NotiShellGui.BackColor := getActiveStatusColor(), 500, id)
-	closeFunctions[id] := SetTimer(() => closeNotification(id), -duration, id)
-	
-	if IsFunc(onNo)
-		SetTimer(() => onNo.Call(), -duration, id)
-	else if IsFunc(onOk)
-		SetTimer(() => onOk.Call(), -duration, id)
-	else if IsFunc(onCancel)
-		SetTimer(() => onCancel.Call(), -duration, id)
-	else if IsFunc(onClose)
-		SetTimer(() => onClose.Call(), -duration, id)
-	
-	
-	; Close & dequeue logic 
-	closeNotification(hwnd := id) {
-		if !slotAssignments.Has(hwnd)
+	getNotificationBorderColor(forcedColor := "") {
+		return forcedColor ? forcedColor : getActiveStatusColor()
+	}
+
+	local lastThemeUpdate := tick()
+	updateTheme(*) {
+		if !WinExist("ahk_id " id)
+			return SetTimer(updateTheme, 0)
+		if NotiShellGui.BackColor != getNotificationBorderColor(highlightColor)
+			NotiShellGui.BackColor := getNotificationBorderColor(highlightColor)
+		if (tick() - lastThemeUpdate) < 1
 			return
-	
-		; Get current slot before removal
-		oldSlot := slotAssignments[hwnd]
-	
-		; Remove from GUI tracking
-		removeFromArray(notificationGUIs, hwnd)
-		closeFunctions.Delete(hwnd)
-		themeFunctions.Delete(hwnd)
-		SetTimer(() => FadeWindow(hwnd, "out", 500), -1, hwnd)
-		slotStates[oldSlot] := false
+		lastThemeUpdate := tick()
+		if titleLabel
+			titleLabel.Redraw()
+		if messageBox
+			messageBox.Redraw()
+	}
 
-		; Capture current assignments *before* modifying
-		local currentAssignments := slotAssignments.Clone()
+	NotiShellGui.BackColor := getNotificationBorderColor(highlightColor)
+	SetTimer(updateTheme, 250)
+	WinSetTransparent(0, NotiShellGui.Hwnd)
+	NotiShellGui.Show("NoActivate x" shellX " y" shellY " w" popupWidth " h" finalHeight)
+	NotiInnerGui.Show("NoActivate w" innerWidth " h" finalHeight)
+	NotiInnerGui.OnEvent("Escape", closeNotification)
+	NotiShellGui.OnEvent("Escape", closeNotification)
+	SetRoundedCorners(NotiShellGui.Hwnd, 16)
+	SetRoundedCorners(NotiInnerGui.Hwnd, 16)
+	SetTimer((*) => FadeWindow(NotiShellGui.Hwnd, "in", 75, false), -1)
 
-		; Now safe to remove the closed notification
-		slotAssignments.Delete(hwnd)
-	
-		; Pull next notification from queue if any
-		if notificationQueueKeys.Length > 0 {
-			nextKey := notificationQueueKeys.RemoveAt(1)
-			next := notificationQueue[nextKey]
-			notificationQueue.Delete(nextKey)
-			SendNotification(next["Message"], next["Config"])
-		}
+	local fadeDuration := duration
+	if (type = "yesno" and fadeDuration <= 0)
+		fadeDuration := 30000
+	else if (type = "ok" and fadeDuration <= 0)
+		fadeDuration := 5000
+	if fadeDuration > 0
+		SetTimer(() => closeNotification(), -fadeDuration)
+
+	closeNotification(optionalHwnd := 0) {
+		local hwndToClose := optionalHwnd ? optionalHwnd : id
+		try removeFromArray(notificationGUIs, hwndToClose)
+		try SetTimer(updateTheme, 0)
+		if WinExist("ahk_id " hwndToClose)
+			SetTimer((*) => FadeWindow(hwndToClose, "out", 75), -1)
+		return NotiShellGui
 	}
 }
 
@@ -2557,6 +2593,8 @@ updateUIVisibility(*) {
 	global isUIHidden
 	global MainUI_PosX
 	global MainUI_PosY
+	global UI_Width
+	global UI_Height
 	
 	if not MainUI
 		return
@@ -2565,7 +2603,7 @@ updateUIVisibility(*) {
 	if isUIHidden
 		MainUI.Hide()
 	else if not isUIHidden and winState != -1
-		MainUI.Show((MainUI_PosX = 0 and MainUI_PosY = 0 and "Center" or "X" . MainUI_PosX . " Y" . MainUI_PosY) " Restore AutoSize")
+		MainUI.Show((MainUI_PosX = 0 and MainUI_PosY = 0 and "Center" or "X" . MainUI_PosX . " Y" . MainUI_PosY) " Restore w" . UI_Width . " h" . UI_Height)
 }
 
 ClampMainUIPos(*) {
@@ -2573,6 +2611,8 @@ ClampMainUIPos(*) {
 	global isUIHidden
 	global MainUI_PosX
 	global MainUI_PosY
+	global UI_Width
+	global UI_Height
 	global ProfilesDir
 
 	local VDisplay_Width := SysGet(78) ; SM_CXVIRTUALSCREEN
@@ -2590,7 +2630,7 @@ ClampMainUIPos(*) {
 		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", VDisplay_Width / 2, "int")
 		
 		if MainUI and not isUIHidden and winState != -1
-			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
+			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " w" . UI_Width . " h" . UI_Height)
 	}
 
 	if Y > VDisplay_Height or Y < (-VDisplay_Height*2) {
@@ -2598,18 +2638,17 @@ ClampMainUIPos(*) {
 		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", VDisplay_Height / 2, "int")
 
 		if MainUI and winState != -1
-			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " AutoSize")
+			MainUI.Show("X" . MainUI_PosX . " Y" . MainUI_PosY . " w" . UI_Width . " h" . UI_Height)
 	}
 }
 
 FindTargetHWND(*) {
 	global SelectedProcessExe
-	global ProcessWindowCache
+	local foundWindow := WinExist("ahk_exe " SelectedProcessExe) and WinExist("ahk_exe " SelectedProcessExe) or ""
 
-	local foundWindow := ProcessWindowCache.Has(SelectedProcessExe) and ProcessWindowCache[SelectedProcessExe] or false
-	if foundWindow and foundWindow.Length == 1
-		return foundWindow[1]
-	
+	if !foundWindow
+		return false
+
 	return foundWindow
 }
 
@@ -2683,7 +2722,7 @@ ClickWindow(optionalHWND := "") {
 }
 
 isMouseClickingOnTargetWindow(key?, override*) {
-	global initializing, ProcessWindowCache, SelectedProcessExe
+	global initializing, SelectedProcessExe
 
 	if initializing
 		return
@@ -2699,7 +2738,7 @@ isMouseClickingOnTargetWindow(key?, override*) {
 		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
 		
 		if hoverWindow == process
-			ResetCooldown(hoverWindow)
+			ResetCooldown()
 	}
 	
 	if override[1]
@@ -3611,8 +3650,8 @@ loadProfileSettings(processName) {
 	KeyToSend := readIniProfileSetting(ProfilesDir, processName, "KeyToSend", "~LButton")
 	currentTheme := readIniProfileSetting(ProfilesDir, processName, "SelectedTheme", "Dark Mode")
 	buttonFontSize := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontSize", "12", "int")
-	buttonFontWeight := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontSize", "12", "int")
-	buttonFont := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontSize", "12", "int")
+	buttonFontWeight := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontWeight", "550", "int")
+	buttonFont := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ButtonFontStyle", "Consolas")
 	
     updateGlobalThemeVariables(currentTheme)
 }
@@ -4424,13 +4463,13 @@ GetGitHubReleaseTags(owner, repo) {
 	try
 		http.Send()
 	catch Error as e {
-		SendNotification("Failed to fetch release tags. Error: " Print*(e.Message))
+		SendNotification("Failed to fetch release tags. Error: " Print(e.Message))
 		return []
 	}
 
 	; Check if the request was successful
 	if (http.Status != 200) {
-		SendNotification("Failed to fetch release tags. Status: " Print*(http.Status))
+		SendNotification("Failed to fetch release tags. Status: " Print(http.Status))
 		return []
 	}
 
