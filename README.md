@@ -1,6 +1,12 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/5466c7da-ff39-4525-9fc5-2703fccb4b0e">
+  <picture>
+    <img src="https://github.com/user-attachments/assets/5466c7da-ff39-4525-9fc5-2703fccb4b0e">
+  </picture>
 </p>
+
+<p align="center"><a href="https://github.com/WoahItsJeebus/JACS/releases/download/Launcher/JACS_Launcher.exe">
+ <img alt="GitHub Release" src="https://img.shields.io/github/v/release/WoahItsJeebus/JACS?sort=semver&display_name=tag&label=Download%20Release&color=%23FFDE21"height="40" width="320">
+</a></p>
 
 - ### Anti-AFK
   - This script will look for an active Roblox process, focus it, click the center of the window, and return to the previously active window (if any), repeats every 15 minutes unless specified otherwise.
@@ -29,10 +35,6 @@ ___
 
 ## Dependencies
 - [AutoHotKey v2](https://autohotkey.com/download/ahk-v2.exe)
-
-<p align="center"><a href="https://github.com/WoahItsJeebus/JACS/releases/download/Launcher/JACS_Launcher.exe">
-  <img alt="GitHub Release" src="https://img.shields.io/github/v/release/WoahItsJeebus/JACS?sort=semver&display_name=tag&style=plastic&label=Download%20Latest" height="40" width="340">
-</a></p>
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/cde61684-5c17-4ec0-9573-66fd5c4dbb46">
