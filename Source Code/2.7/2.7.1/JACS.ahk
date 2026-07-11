@@ -1897,7 +1897,8 @@ RunCore(*) {
 			SoundBeep(2000, 70)
 		
 		; Get old mouse pos
-		MouseGetPos(&OldPosX, &OldPosY, &windowID)
+		local OldPosX := 0, OldPosY := 0, windowID := 0
+		try MouseGetPos(&OldPosX, &OldPosY, &windowID)
 		
 		local wasMinimized := False
 		
@@ -2303,15 +2304,25 @@ CheckSidebarHover() {
 		return
 	}
 
-	MouseGetPos &mx, &my, &winHwnd, &ctrlHwnd, 2
+	; MouseGetPos can leave an output variable unset when there is no control
+	; beneath the cursor. Initialize every output before reading it.
+	local mx := 0, my := 0, winHwnd := 0, ctrlHwnd := 0
+	try MouseGetPos(&mx, &my, &winHwnd, &ctrlHwnd, 2)
+	catch {
+		if currentTooltipIndex != 0 {
+			ToolTip()
+			currentTooltipIndex := 0
+		}
+		return
+	}
 
 	for idx, btnData in iconButtons {
 		local btnHwnd := 0
 		try btnHwnd := btnData.control.Hwnd
 		catch
 			continue
-
-		if ctrlHwnd && btnHwnd && ctrlHwnd = btnHwnd {
+		
+		if IsSet(ctrlHwnd) && ctrlHwnd && btnHwnd && ctrlHwnd = btnHwnd {
 			if currentTooltipIndex != idx {
 				ToolTip(btnData.tooltip)
 				currentTooltipIndex := idx
@@ -2566,7 +2577,7 @@ SaveMainUIPosition(*) {
 		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", x)
 		updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", y)
 		MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", Integer(A_ScreenWidth / 2), "int")
-		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenWidth / 2), "int")
+		MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenHeight / 2), "int")
 
 		; if not exiting, reload the GUI to apply the new position
 		if !MainUI
@@ -2585,7 +2596,7 @@ SaveMainUIPosition(*) {
     updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "monitorNum", monitorNum)
 
 	MainUI_PosX := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosX", Integer(A_ScreenWidth / 2), "int")
-	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenWidth / 2), "int")
+	MainUI_PosY := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "MainUI_PosY", Integer(A_ScreenHeight / 2), "int")
 }
 
 updateUIVisibility(*) {
@@ -2644,22 +2655,62 @@ ClampMainUIPos(*) {
 
 FindTargetHWND(*) {
 	global SelectedProcessExe
-	local foundWindow := WinExist("ahk_exe " SelectedProcessExe) and WinExist("ahk_exe " SelectedProcessExe) or ""
 
-	if !foundWindow
+	if !SelectedProcessExe
 		return false
 
-	return foundWindow
+	local windowList := []
+	try windowList := WinGetList("ahk_exe " SelectedProcessExe)
+	catch
+		return false
+
+	local bestHwnd := 0, bestArea := 0
+	local minimizedFallback := 0, minimizedArea := 0
+	for hwnd in windowList {
+		if !hwnd || !DllCall("IsWindow", "ptr", hwnd, "int")
+			continue
+
+		; DetectHiddenWindows is enabled globally, so WinExist alone can select
+		; an invisible helper window with a zero-sized client area.
+		if !DllCall("IsWindowVisible", "ptr", hwnd, "int")
+			continue
+
+		local width := 0, height := 0
+		try WinGetPos(,, &width, &height, "ahk_id " hwnd)
+		catch
+			continue
+
+		if width <= 0 || height <= 0
+			continue
+
+		local state := 0
+		try state := WinGetMinMax("ahk_id " hwnd)
+		catch
+			continue
+
+		local area := width * height
+		if state != -1 {
+			if area > bestArea {
+				bestArea := area
+				bestHwnd := hwnd
+			}
+		} else if area > minimizedArea {
+			minimizedArea := area
+			minimizedFallback := hwnd
+		}
+	}
+
+	if bestHwnd
+		return bestHwnd
+	return minimizedFallback ? minimizedFallback : false
 }
 
 ClickWindow(optionalHWND := "") {
 	global SelectedProcessExe, LastActiveWindow := false
 	global MouseSpeed, MouseClickRateOffset, MouseClickRadius, MouseClicks
 	global KeyToSend, MinutesToWait, SecondsToWait
-	local target := "ahk_exe " . SelectedProcessExe
 
-	try
-		LastActiveWindow := WinActive(SelectedProcessExe)
+	try LastActiveWindow := WinActive("ahk_exe " SelectedProcessExe)
 	catch
 		LastActiveWindow := false
 
@@ -2667,56 +2718,82 @@ ClickWindow(optionalHWND := "") {
 		loop loopAmount {
 			local WindowX := 0, WindowY := 0, Width := 0, Height := 0
 			local CenterX := 0, CenterY := 0, OffsetX := 0, OffsetY := 0
-			local cachedWindowID := "", hoverCtrl := ""
+			local cachedWindowID := targetID
 
-			cachedWindowID := targetID
-			if !cachedWindowID
-				return MsgBox("Invalid window ID.")
+			if !cachedWindowID || !DllCall("IsWindow", "ptr", cachedWindowID, "int")
+				return false
 
-			ActivateWindow(cachedWindowID)
+			local windowTitle := "ahk_id " cachedWindowID
+			if !ActivateWindow(cachedWindowID)
+				return false
 
-			try WinGetPos(&WindowX, &WindowY, &Width, &Height, "ahk_id" (cachedWindowID or targetID))
-			
-			if (Width <= 0 || Height <= 0)
-				return MsgBox("Invalid window dimensions.")
+			try WinGetPos(&WindowX, &WindowY, &Width, &Height, windowTitle)
+			catch
+				return false
+
+			; A minimized or transitioning window can briefly report unusable bounds.
+			; Restore once and retry instead of interrupting the user with a MsgBox.
+			if Width <= 0 || Height <= 0 {
+				try WinRestore(windowTitle)
+				Sleep(100)
+				try WinGetPos(&WindowX, &WindowY, &Width, &Height, windowTitle)
+				catch
+					return false
+			}
+
+			if Width <= 0 || Height <= 0
+				return false
 
 			CenterX := WindowX + (Width / 2)
 			CenterY := WindowY + (Height / 2)
 			OffsetX := Random(-MouseClickRadius, MouseClickRadius)
 			OffsetY := Random(-MouseClickRadius, MouseClickRadius)
 
-			MouseGetPos(&mouseX, &mouseY, &hoverWindow, &hoverCtrl)
+			local mouseX := 0, mouseY := 0, hoverWindow := 0, hoverCtrl := 0
+			try MouseGetPos(&mouseX, &mouseY, &hoverWindow, &hoverCtrl)
 
-			if (hoverWindow && hoverWindow != cachedWindowID && (MinutesToWait > 0 || SecondsToWait > 0)) {
+			if hoverWindow && hoverWindow != cachedWindowID && (MinutesToWait > 0 || SecondsToWait > 0)
 				MouseMove(CenterX + OffsetX, CenterY + OffsetY, MouseSpeed ? Random(0, MouseSpeed) : 0)
-			}
 
-			if !hoverCtrl && hoverWindow && cachedWindowID && hoverWindow == cachedWindowID {
+			if !hoverCtrl && hoverWindow && hoverWindow == cachedWindowID
 				Click(KeyToSend == "RButton" ? "Right" : "Left")
-			}
 
 			if loopAmount > 1
 				Sleep(Random(10, MouseClickRateOffset || 10))
 		}
+
+		return true
 	}
 
-	; Loop through all windows of selected exe
 	if optionalHWND
 		return doClick(optionalHWND, MouseClicks || 5)
-	
-	ActivateWindow(target) {
+
+	return false
+
+	ActivateWindow(targetHwnd) {
+		if !targetHwnd
+			return false
+
+		local windowTitle := "ahk_id " targetHwnd
 		try {
-			if (MinutesToWait <= 0 || SecondsToWait <= 0)
-				return
-			if WinGetMinMax(target) == -1 {
-				WinRestore(target)
+			; Only skip activation when the cooldown is genuinely disabled.
+			if MinutesToWait <= 0 && SecondsToWait <= 0
+				return WinExist(windowTitle) != 0
+
+			if WinGetMinMax(windowTitle) == -1 {
+				WinRestore(windowTitle)
 				Sleep(100)
 			}
 
-			if !WinActive(target) && WinGetMinMax(target) != -1 {
-				WinActivate(target)
-				WinWaitActive(target,,250)
+			if !WinActive(windowTitle) {
+				WinActivate(windowTitle)
+				; WinWaitActive uses seconds, not milliseconds.
+				WinWaitActive(windowTitle,, 0.5)
 			}
+
+			return WinExist(windowTitle) != 0
+		} catch {
+			return false
 		}
 	}
 }
@@ -3758,114 +3835,167 @@ createDefaultDirectories(*) {
 ; ####### Update Functions ####### ;
 ; ################################ ;
 
+NormalizeVersionString(versionText) {
+	versionText := Trim(versionText)
+	return RegExReplace(versionText, "i)^v(?=\d)", "")
+}
+
 IsVersionNewer(localVersion, onlineVersion) {
+	localVersion := NormalizeVersionString(localVersion)
+	onlineVersion := NormalizeVersionString(onlineVersion)
+
 	if !localVersion || !onlineVersion
 		return "Failed"
 
-	localParts := StrSplit(localVersion, ".")
-	onlineParts := StrSplit(onlineVersion, ".")
-	
-	; Compare each version segment numerically
-	Loop localParts.Length {
-		localPart := localParts[A_Index]
-		onlinePart := onlineParts && onlineParts.Has(A_Index) ? onlineParts[A_Index] : unset
-		if !onlinePart or !IsSet(onlinePart)
-			return "Failed"
+	if !RegExMatch(localVersion, "^\d+(?:\.\d+)*", &localMatch)
+		return "Failed"
+	if !RegExMatch(onlineVersion, "^\d+(?:\.\d+)*", &onlineMatch)
+		return "Failed"
 
-		; Treat missing parts as 0 (e.g., "1.2" vs "1.2.1")
-		localPart := localPart != "" ? localPart : 0
-		onlinePart := onlinePart != "" ? onlinePart : 0
+	local localParts := StrSplit(localMatch[0], ".")
+	local onlineParts := StrSplit(onlineMatch[0], ".")
+	local segmentCount := Max(localParts.Length, onlineParts.Length)
 
-		if (onlinePart > localPart)
+	Loop segmentCount {
+		local localPart := A_Index <= localParts.Length ? Integer(localParts[A_Index]) : 0
+		local onlinePart := A_Index <= onlineParts.Length ? Integer(onlineParts[A_Index]) : 0
+
+		if onlinePart > localPart
 			return "Outdated"
-		else if (onlinePart < localPart)
+		if onlinePart < localPart
 			return "Beta"
 	}
-	return "Updated" ; Versions are equal
+
+	local localSuffix := SubStr(localVersion, StrLen(localMatch[0]) + 1)
+	local onlineSuffix := SubStr(onlineVersion, StrLen(onlineMatch[0]) + 1)
+
+	if localSuffix == onlineSuffix
+		return "Updated"
+	if localSuffix && !onlineSuffix
+		return "Outdated"
+	if !localSuffix && onlineSuffix
+		return "Beta"
+
+	; Two different prerelease labels cannot be ordered safely without a full
+	; SemVer parser, so report a useful failure instead of guessing.
+	return "Failed"
 }
 
-GetLatestReleaseVersion(JSON := "") {
-    local URL_API := "https://api.github.com/repos/WoahItsJeebus/JACS/releases/latest"
-    local tempJSONFile := JSON or A_Temp "\latest_release.json"
-    
-	if !JSON
-		try {
-			DownloadURL(URL_API, tempJSONFile)  ; Download the JSON response
-		} catch {
-			return ""
+GetLatestReleaseVersion(&errorMessage, JSON := "") {
+	global version
+
+	local URL_API := "https://api.github.com/repos/WoahItsJeebus/JACS/releases/latest"
+	local jsonText := ""
+	errorMessage := ""
+
+	try {
+		if JSON {
+			jsonText := FileExist(JSON) ? FileRead(JSON, "UTF-8") : JSON
+		} else {
+			local req := ComObject("WinHttp.WinHttpRequest.5.1")
+			req.SetTimeouts(5000, 5000, 10000, 10000)
+			req.Open("GET", URL_API, false)
+			req.SetRequestHeader("User-Agent", "JACS/" version " (AutoHotkey)")
+			req.SetRequestHeader("Accept", "application/vnd.github+json")
+			req.Send()
+
+			local status := req.Status
+			if status != 200 {
+				local responseText := "", statusText := "", detail := ""
+				try responseText := req.ResponseText
+				try statusText := req.StatusText
+
+				if responseText && RegExMatch(responseText, '"message"\s*:\s*"([^"]+)"', &messageMatch)
+					detail := StrReplace(messageMatch[1], "\n", " ")
+
+				errorMessage := "GitHub returned HTTP " status
+				if statusText
+					errorMessage .= " (" statusText ")"
+				if detail
+					errorMessage .= ": " detail
+				return ""
+			}
+
+			jsonText := req.ResponseText
 		}
-    
-    local jsonText := FileRead(tempJSONFile)
-    FileDelete(tempJSONFile)  ; Clean up the temporary file
-    
-    local releaseInfo := JSON_parse(jsonText)
-    
-    if (!releaseInfo or !IsObject(releaseInfo)) {
-        return ""
-    }
-    
-    ; Use a try/catch to safely attempt to access tag_name
-    try {
-        local latestTag := releaseInfo.tag_name
-    } catch {
-        latestTag := ""
-    }
-    
-    if (latestTag = "" or !latestTag) {
-        return ""
-    }
-    
-    return latestTag
+
+		if !jsonText
+			throw Error("GitHub returned an empty response.")
+
+		if !RegExMatch(jsonText, '"tag_name"\s*:\s*"([^"]+)"', &tagMatch)
+			throw Error("The GitHub response did not contain a release tag.")
+
+		local latestTag := Trim(tagMatch[1])
+		if !latestTag
+			throw Error("The latest release tag was empty.")
+
+		return latestTag
+	} catch as e {
+		errorMessage := e.Message
+		return ""
+	}
 }
 
 GetUpdate(*) {
-    global autoUpdateDontAsk
-    global version
-    
-    global URL_SCRIPT
-	global tempUpdateFile
-	global latestVersion := GetLatestReleaseVersion()
-	
-	global localScriptDir
+	global autoUpdateDontAsk
+	global version
+
+	local updateError := ""
+	local latestVersion := GetLatestReleaseVersion(&updateError)
+
+	if !latestVersion {
+		autoUpdateDontAsk := true
+		SetTimer(AutoUpdate, 0)
+
+		local failureMessage := "JACS update check failed. Continuing with onboard script."
+		if updateError
+			failureMessage .= "`n`n" updateError
+
+		SendNotification(failureMessage, Map(
+			"Duration", 10000,
+			"Title", "JACS - Update Status"
+		))
+		return "Failed"
+	}
+
 	local getStatus := IsVersionNewer(version, latestVersion)
-    if getStatus == "Outdated" {
-        if !autoUpdateDontAsk {
-            SendNotification("Get the latest version from GitHub?", Map(
+	if getStatus == "Outdated" {
+		if !autoUpdateDontAsk {
+			SendNotification("Version " latestVersion " is available. Open the latest JACS release?", Map(
 				"Type", "yesno",
 				"OnYes", (*) => (
-					autoUpdateDontAsk := true
+					autoUpdateDontAsk := true,
+					SetTimer(AutoUpdate, 0),
 					Run("https://github.com/WoahItsJeebus/JACS/releases/latest")
 				),
 				"OnNo", (*) => (
-					autoUpdateDontAsk := true
+					autoUpdateDontAsk := true,
 					SetTimer(AutoUpdate, 0)
 				),
 				"Duration", 15000,
-				"Title", "JACS - Update Available!",
+				"Title", "JACS - Update Available!"
 			))
-        }
-    } else if getStatus == "Updated" {
+		}
+	} else if getStatus == "Updated" {
 		autoUpdateDontAsk := false
 		SetTimer(AutoUpdate, 0)
 	} else if getStatus == "Beta" {
 		autoUpdateDontAsk := true
-		SendNotification("Using JACS beta version " version ". Continuing with onboard script", Map(
+		SetTimer(AutoUpdate, 0)
+		SendNotification("Using JACS beta version " version ". Latest public release: " latestVersion ".", Map(
 			"Duration", 5000,
-			"Title", "JACS - Update Status",
-		))
-	} else if getStatus == "Failed" {
-		autoUpdateDontAsk := true
-		SendNotification("JACS update check failed. Continuing with onboard script", Map(
-			"Duration", 5000,
-			"Title", "JACS - Update Status",
+			"Title", "JACS - Update Status"
 		))
 	} else {
 		autoUpdateDontAsk := true
-		SendNotification("JACS update check returned `"Other`"", Map(
-			"Duration", 5000,
-			"Title", "JACS - Update Status",
+		SetTimer(AutoUpdate, 0)
+		SendNotification("JACS could not compare local version " version " with release " latestVersion ".", Map(
+			"Duration", 8000,
+			"Title", "JACS - Update Status"
 		))
 	}
+
+	return getStatus
 }
 
 AutoUpdate(*) {
@@ -3877,11 +4007,11 @@ AutoUpdate(*) {
 }
 
 toggleAutoUpdate(doUpdate := false) {
-	if !doUpdate
-		return SetTimer(AutoUpdate, 0)
-
-	GetUpdate()
-	return SetTimer(AutoUpdate, 60000)
+	; A startup update check only needs one request. Repeating it every minute
+	; creates duplicate notifications and can burn GitHub's anonymous rate limit.
+	SetTimer(AutoUpdate, 0)
+	if doUpdate
+		return GetUpdate()
 }
 
 ; ################################ ;
@@ -4454,11 +4584,16 @@ GetGitHubReleaseInfo(owner, repo, release := "latest") {
 }
 
 GetGitHubReleaseTags(owner, repo) {
+	global version
+
     ; repo should be something like "username/repo"
 	url := "https://api.github.com/repos/" owner "/" repo "/releases"
 
     http := ComObject("WinHttp.WinHttpRequest.5.1")
+	http.SetTimeouts(5000, 5000, 10000, 10000)
     http.Open("GET", url, false)
+	http.SetRequestHeader("User-Agent", "JACS/" version " (AutoHotkey)")
+	http.SetRequestHeader("Accept", "application/vnd.github+json")
     
 	try
 		http.Send()
