@@ -3,7 +3,7 @@
 Persistent
 
 global initializing := true
-global version := "2.7.0"
+global version := "2.7.1"
 
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
