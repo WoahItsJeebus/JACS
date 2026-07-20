@@ -3,7 +3,7 @@
 Persistent
 
 global initializing := true
-global version := "2.7.2"
+global version := "2.7.3"
 
 CoordMode("Mouse", "Screen")
 CoordMode("Menu", "Screen")
@@ -867,29 +867,22 @@ CreateWindowSettingsGUI(*) {
 		if not WindowSettingsUI or not DescriptionBox
 			return SetTimer(mouseHoverDescription,0)
 
-		local HoverControl := ""
-		local HoverWindow := ""
-		local MouseX := 0
-		local MouseY := 0
+		local MouseX := 0, MouseY := 0, HoverWindow := 0, HoverControl := 0
+		try MouseGetPos(&MouseX, &MouseY, &HoverWindow, &HoverControl)
+		catch
+			return
 		local targetControl := ""
 
-		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
-
-		if (HoverControl && HoverWindow) {
+		if (IsSet(HoverControl) && HoverControl) && HoverWindow {
 			if WindowSettingsUI && HoverWindow != WindowSettingsUI.Hwnd
 				return
-
 			try targetControl := WindowSettingsUI.__Item[HoverControl]
-			if (WindowSettingsUI and DescriptionBox and targetControl and Descriptions.Has(targetControl.Name)) {
-				if (DescriptionBox.Text != Descriptions[targetControl.Name])
-					try updateDescriptionBox(Descriptions[targetControl.Name])
+			if WindowSettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
+				try updateDescriptionBox(Descriptions[targetControl.Name])
 			}
-			else if (WindowSettingsUI and DescriptionBox) {
+			else if WindowSettingsUI and DescriptionBox and not HoverControl or not targetControl or not Descriptions.Has(targetControl.Name) {
 				try updateDescriptionBox()
 			}
-		}
-		else if (WindowSettingsUI and DescriptionBox) {
-			try updateDescriptionBox()
 		}
 	}
 	; Calculate center position
@@ -1138,7 +1131,7 @@ CreateClickerSettingsGUI(*) {
 
 		if ctrlObj.Name == "ClickRadius" {
 			updateIniProfileSetting(ProfilesDir, SelectedProcessExe, "ClickRadius", ctrlObj.Value)
-			MouseClickRateOffset := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ClickRadius", 0, "int")
+			MouseClickRadius := readIniProfileSetting(ProfilesDir, SelectedProcessExe, "ClickRadius", 0, "int")
 			
 			if ClickRadiusLabel
 				ClickRadiusLabel.Text := "Click Radius: " . ctrlObj.Value . " pixels"
@@ -1254,28 +1247,22 @@ CreateClickerSettingsGUI(*) {
 		if not SettingsUI or not DescriptionBox
 			return SetTimer(mouseHoverDescription,0)
 
-		local HoverControl := ""
-		local HoverWindow := ""
-		local MouseX := 0
-		local MouseY := 0
+		local MouseX := 0, MouseY := 0, HoverWindow := 0, HoverControl := 0
+		try MouseGetPos(&MouseX, &MouseY, &HoverWindow, &HoverControl)
+		catch
+			return
 		local targetControl := ""
 
-		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
-
-		if (HoverControl && HoverWindow) {
-			if HoverWindow != SettingsUI.Hwnd
+		if (IsSet(HoverControl) && HoverControl) && HoverWindow {
+			if SettingsUI && HoverWindow != SettingsUI.Hwnd
 				return
 			try targetControl := SettingsUI.__Item[HoverControl]
-			if (SettingsUI and DescriptionBox and targetControl and Descriptions.Has(targetControl.Name)) {
-				if (DescriptionBox.Text != Descriptions[targetControl.Name])
-					try updateDescriptionBox(Descriptions[targetControl.Name])
+			if SettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
+				try updateDescriptionBox(Descriptions[targetControl.Name])
 			}
-			else if (SettingsUI and DescriptionBox) {
+			else if SettingsUI and DescriptionBox and not HoverControl or not targetControl or not Descriptions.Has(targetControl.Name) {
 				try updateDescriptionBox()
 			}
-		}
-		else if (SettingsUI and DescriptionBox) {
-			try updateDescriptionBox()
 		}
 	}
 	
@@ -1484,28 +1471,22 @@ CreateScriptSettingsGUI(*) {
 		if not ScriptSettingsUI or not DescriptionBox
 			return SetTimer(mouseHoverDescription,0)
 
-		local HoverControl := ""
-		local HoverWindow := ""
-		local MouseX := 0
-		local MouseY := 0
+		local MouseX := 0, MouseY := 0, HoverWindow := 0, HoverControl := 0
+		try MouseGetPos(&MouseX, &MouseY, &HoverWindow, &HoverControl)
+		catch
+			return
 		local targetControl := ""
 
-		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
-
-		if (HoverControl && HoverWindow) {
-			if HoverWindow != ScriptSettingsUI.Hwnd
+		if (IsSet(HoverControl) && HoverControl) && HoverWindow {
+			if ScriptSettingsUI && HoverWindow != ScriptSettingsUI.Hwnd
 				return
 			try targetControl := ScriptSettingsUI.__Item[HoverControl]
-			if (ScriptSettingsUI and DescriptionBox and targetControl and Descriptions.Has(targetControl.Name)) {
-				if (DescriptionBox.Text != Descriptions[targetControl.Name])
-					try updateDescriptionBox(Descriptions[targetControl.Name])
+			if ScriptSettingsUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
+				try updateDescriptionBox(Descriptions[targetControl.Name])
 			}
-			else if (ScriptSettingsUI and DescriptionBox) {
+			else if ScriptSettingsUI and DescriptionBox and not HoverControl or not targetControl or not Descriptions.Has(targetControl.Name) {
 				try updateDescriptionBox()
 			}
-		}
-		else if (ScriptSettingsUI and DescriptionBox) {
-			try updateDescriptionBox()
 		}
 	}
 
@@ -1655,27 +1636,21 @@ CreateExtrasGUI(*) {
 		global PatchUI
 		if PatchUI
 			return
-		
-		local HoverControl := ""
-		local HoverWindow := ""
-		local MouseX := 0
-		local MouseY := 0
-		MouseGetPos(&MouseX,&MouseY,&HoverWindow,&HoverControl)
+
+		local MouseX := 0, MouseY := 0, HoverWindow := 0, HoverControl := 0
+		try MouseGetPos(&MouseX, &MouseY, &HoverWindow, &HoverControl)
+		catch
+			return
 		local targetControl := ""
 
-		if (HoverControl)
-		{
+		if (IsSet(HoverControl) && HoverControl) && HoverWindow {
 			try targetControl := ExtrasUI.__Item[HoverControl]
-			if (ExtrasUI and DescriptionBox and targetControl and Descriptions.Has(targetControl.Name)) {
-				if (DescriptionBox.Text != Descriptions[targetControl.Name])
-					try updateDescriptionBox(Descriptions[targetControl.Name])
+			if ExtrasUI and DescriptionBox and HoverControl and targetControl and Descriptions.Has(targetControl.Name) and DescriptionBox.Text != Descriptions[targetControl.Name] {
+				try updateDescriptionBox(Descriptions[targetControl.Name])
 			}
-			else if (ExtrasUI and DescriptionBox) {
+			else if ExtrasUI and DescriptionBox and not HoverControl or not targetControl or not Descriptions.Has(targetControl.Name) {
 				try updateDescriptionBox()
 			}
-		}
-		else if (ExtrasUI and DescriptionBox) {
-				try updateDescriptionBox()
 		}
 	}
 
@@ -1944,26 +1919,37 @@ RunCore(*) {
 			BlockInput("MouseMove")
 		}
 
-		; Find and activate process
+		; Find, activate, and click the target. A failed attempt must not be
+		; treated as fifteen more minutes of successful activity.
 		local targetProcess := FindTargetHWND()
-		try ClickWindow(targetProcess)
+		local clickSucceeded := false
+		try clickSucceeded := ClickWindow(targetProcess)
 		
 		; Activate previous application window & reposition mouse
 		local lastActiveWindowID := ""
 		try lastActiveWindowID := WinExist(windowID)
 
 		if not LastActiveWindow and lastActiveWindowID and (MinutesToWait > 0 or SecondsToWait > 0) {
-			WinActivate lastActiveWindowID
-			MouseMove OldPosX, OldPosY, 0
+			try WinActivate(lastActiveWindowID)
+			try MouseMove(OldPosX, OldPosY, 0)
 		}
 
 		if doMouseLock
 			Sleep(25)
 
-		if (MinutesToWait > 0 or SecondsToWait > 0) and WaitProgress
-			WaitProgress.Value := 0
+		if clickSucceeded {
+			if (MinutesToWait > 0 or SecondsToWait > 0) and WaitProgress
+				WaitProgress.Value := 0
 
-		lastUpdateTime := A_TickCount
+			lastUpdateTime := A_TickCount
+		} else if SecondsToWait > 0 {
+			; Retry in at most five seconds instead of silently waiting through the
+			; entire cooldown after activation or input delivery failed. The normal
+			; trigger uses a rounded percentage, so account for its 99.5% threshold.
+			local retryDelaySeconds := Min(5, Max(1, SecondsToWait))
+			local triggerAtSeconds := SecondsToWait * 0.995
+			lastUpdateTime := A_TickCount - Max(0, triggerAtSeconds - retryDelaySeconds) * 1000
+		}
 	}
 	
 	; Unblock Inputs
@@ -2744,66 +2730,163 @@ ClickWindow(optionalHWND := "") {
 	global SelectedProcessExe, LastActiveWindow := false
 	global MouseSpeed, MouseClickRateOffset, MouseClickRadius, MouseClicks
 	global KeyToSend, MinutesToWait, SecondsToWait
+	local targetHwnd := optionalHWND ? optionalHWND : FindTargetHWND()
+	local timedMode := MinutesToWait > 0 || SecondsToWait > 0
 
-	try LastActiveWindow := WinActive("ahk_exe " SelectedProcessExe)
+	if !targetHwnd || !DllCall("IsWindow", "ptr", targetHwnd, "int")
+		return false
+
+	try LastActiveWindow := WinActive("ahk_id " targetHwnd) != 0
 	catch
 		LastActiveWindow := false
 
-	doClick(targetID, loopAmount := 1) {
-		loop loopAmount {
-			local WindowX := 0, WindowY := 0, Width := 0, Height := 0
-			local CenterX := 0, CenterY := 0, OffsetX := 0, OffsetY := 0
-			local cachedWindowID := targetID
+	local requestedClicks := Max(1, MouseClicks ? MouseClicks : 5)
+	local mouseButton := InStr(KeyToSend, "RButton") ? "Right" : "Left"
+	local clickCount := 0
 
-			if !cachedWindowID || !DllCall("IsWindow", "ptr", cachedWindowID, "int")
-				return false
+	if timedMode && !ActivateWindow(targetHwnd) {
+		; 2.6 would continue toward the target even when WinActivate had not yet
+		; taken effect. Preserve that useful physical-activation fallback: the
+		; first click activates the window, then the configured burst follows.
+		local activationX := 0, activationY := 0
+		if !GetClickPoint(targetHwnd, &activationX, &activationY)
+			return false
 
-			local windowTitle := "ahk_id " cachedWindowID
-			if !ActivateWindow(cachedWindowID)
-				return false
+		MouseMove(activationX, activationY, 0)
+		Sleep(50)
+		if !SendReliableClick(mouseButton, 1)
+			return false
+		Sleep(100)
 
-			try WinGetPos(&WindowX, &WindowY, &Width, &Height, windowTitle)
-			catch
-				return false
+		if !ActivateWindow(targetHwnd)
+			return false
+	}
 
-			; A minimized or transitioning window can briefly report unusable bounds.
-			; Restore once and retry instead of interrupting the user with a MsgBox.
-			if Width <= 0 || Height <= 0 {
-				try WinRestore(windowTitle)
-				Sleep(100)
-				try WinGetPos(&WindowX, &WindowY, &Width, &Height, windowTitle)
-				catch
-					return false
-			}
+	loop requestedClicks {
+		if !DllCall("IsWindow", "ptr", targetHwnd, "int")
+			break
 
-			if Width <= 0 || Height <= 0
-				return false
+		if timedMode {
+			if !WinActive("ahk_id " targetHwnd) && !ActivateWindow(targetHwnd)
+				break
 
-			CenterX := WindowX + (Width / 2)
-			CenterY := WindowY + (Height / 2)
-			OffsetX := Random(-MouseClickRadius, MouseClickRadius)
-			OffsetY := Random(-MouseClickRadius, MouseClickRadius)
+			local clickX := 0, clickY := 0
+			if !GetClickPoint(targetHwnd, &clickX, &clickY)
+				break
 
-			local mouseX := 0, mouseY := 0, hoverWindow := 0, hoverCtrl := 0
-			try MouseGetPos(&mouseX, &mouseY, &hoverWindow, &hoverCtrl)
+			; Use the target's current client area on every pass, as restoring or
+			; activating a game window can change its screen coordinates.
+			MouseMove(clickX, clickY, MouseSpeed ? Random(0, MouseSpeed) : 0)
 
-			if hoverWindow && hoverWindow != cachedWindowID && (MinutesToWait > 0 || SecondsToWait > 0)
-				MouseMove(CenterX + OffsetX, CenterY + OffsetY, MouseSpeed ? Random(0, MouseSpeed) : 0)
-
-			if !hoverCtrl && hoverWindow && hoverWindow == cachedWindowID
-				Click(KeyToSend == "RButton" ? "Right" : "Left")
-
-			if loopAmount > 1
-				Sleep(Random(10, MouseClickRateOffset || 10))
+			; MouseMove should remain available while user input is blocked, but use
+			; SetCursorPos as a fallback if another hook or overlay prevented it.
+			local actualX := 0, actualY := 0
+			try MouseGetPos(&actualX, &actualY)
+			if Abs(actualX - clickX) > 2 || Abs(actualY - clickY) > 2
+				DllCall("SetCursorPos", "int", clickX, "int", clickY, "int")
 		}
 
+		; The 2.6 series sent the input after targeting the window. Do not veto
+		; that input because Roblox, an overlay, or Windows reports a different
+		; child/root HWND beneath the cursor for a frame.
+		if timedMode && !WinActive("ahk_id " targetHwnd) && !ActivateWindow(targetHwnd)
+			break
+
+		if !SendReliableClick(mouseButton, A_Index)
+			break
+		clickCount++
+
+		; ClickRateOffset is the complete inter-click delay. A value of zero sends
+		; the burst without adding an artificial minimum wait.
+		if A_Index < requestedClicks && MouseClickRateOffset > 0
+			Sleep(MouseClickRateOffset)
+	}
+
+	return clickCount > 0
+
+	GetClickPoint(targetHwnd, &clickX, &clickY) {
+		local clientWidth := 0, clientHeight := 0
+		try WinGetClientPos(,, &clientWidth, &clientHeight, "ahk_id " targetHwnd)
+		catch
+			return false
+
+		if clientWidth <= 2 || clientHeight <= 2
+			return false
+
+		; Choose the point in client coordinates first. Non-client areas such as
+		; the title bar and its close button do not exist in this coordinate space.
+		local radius := Max(0, MouseClickRadius)
+		local radiusX := Min(radius, Floor((clientWidth - 2) / 2))
+		local radiusY := Min(radius, Floor((clientHeight - 2) / 2))
+		local clientClickX := Round((clientWidth / 2) + Random(-radiusX, radiusX))
+		local clientClickY := Round((clientHeight / 2) + Random(-radiusY, radiusY))
+
+		; Match FastLeftClick's client-bounds method: convert between coordinate
+		; spaces and verify the final screen point maps back inside the client area.
+		if !ClientToScreenPoint(targetHwnd, &clientClickX, &clientClickY)
+			return false
+
+		if !IsPointInClientArea(targetHwnd, clientClickX, clientClickY, clientWidth, clientHeight)
+			return false
+
+		clickX := clientClickX
+		clickY := clientClickY
 		return true
 	}
 
-	if optionalHWND
-		return doClick(optionalHWND, MouseClicks || 5)
+	ClientToScreenPoint(targetHwnd, &x, &y) {
+		local point := Buffer(8, 0)
+		NumPut("int", x, point, 0)
+		NumPut("int", y, point, 4)
 
-	return false
+		if !DllCall("ClientToScreen", "ptr", targetHwnd, "ptr", point, "int")
+			return false
+
+		x := NumGet(point, 0, "int")
+		y := NumGet(point, 4, "int")
+		return true
+	}
+
+	ScreenToClientPoint(targetHwnd, &x, &y) {
+		local point := Buffer(8, 0)
+		NumPut("int", x, point, 0)
+		NumPut("int", y, point, 4)
+
+		if !DllCall("ScreenToClient", "ptr", targetHwnd, "ptr", point, "int")
+			return false
+
+		x := NumGet(point, 0, "int")
+		y := NumGet(point, 4, "int")
+		return true
+	}
+
+	IsPointInClientArea(targetHwnd, screenX, screenY, clientWidth, clientHeight) {
+		local clientX := screenX, clientY := screenY
+		if !ScreenToClientPoint(targetHwnd, &clientX, &clientY)
+			return false
+
+		return clientX >= 0 && clientY >= 0 && clientX < clientWidth && clientY < clientHeight
+	}
+
+	SendReliableClick(mouseButton, clickNumber) {
+		try {
+			if Mod(clickNumber, 2) {
+				; Preserve the same Click path used by the reliable 2.6 releases.
+				Click(mouseButton)
+			} else {
+				; Alternate with the Win32 mouse-event path so a global SendMode change
+				; elsewhere in JACS cannot suppress the entire anti-idle burst.
+				local downFlag := mouseButton == "Right" ? 0x0008 : 0x0002
+				local upFlag := mouseButton == "Right" ? 0x0010 : 0x0004
+				DllCall("mouse_event", "uint", downFlag, "uint", 0, "uint", 0, "uint", 0, "uptr", 0)
+				DllCall("mouse_event", "uint", upFlag, "uint", 0, "uint", 0, "uint", 0, "uptr", 0)
+			}
+
+			return true
+		} catch {
+			return false
+		}
+	}
 
 	ActivateWindow(targetHwnd) {
 		if !targetHwnd
@@ -2811,22 +2894,23 @@ ClickWindow(optionalHWND := "") {
 
 		local windowTitle := "ahk_id " targetHwnd
 		try {
-			; Only skip activation when the cooldown is genuinely disabled.
-			if MinutesToWait <= 0 && SecondsToWait <= 0
-				return WinExist(windowTitle) != 0
-
 			if WinGetMinMax(windowTitle) == -1 {
 				WinRestore(windowTitle)
-				Sleep(100)
+				Sleep(150)
 			}
 
-			if !WinActive(windowTitle) {
-				WinActivate(windowTitle)
-				; WinWaitActive uses seconds, not milliseconds.
-				WinWaitActive(windowTitle,, 0.5)
-			}
+			if WinActive(windowTitle)
+				return true
 
-			return WinExist(windowTitle) != 0
+			WinActivate(windowTitle)
+			if WinWaitActive(windowTitle,, 0.75)
+				return true
+
+			; Retry once for games that are slow to accept foreground activation.
+			DllCall("SetForegroundWindow", "ptr", targetHwnd, "int")
+			WinActivate(windowTitle)
+
+			return WinWaitActive(windowTitle,, 0.75) != 0
 		} catch {
 			return false
 		}
@@ -2847,7 +2931,10 @@ isMouseClickingOnTargetWindow(key?, override*) {
 		if GetKeyState(key) == 0
 			return SetTimer(checkWindow, 0, 1)
 		
-		MouseGetPos(&mouseX, &mouseY, &hoverWindow)
+		local mouseX := 0, mouseY := 0, hoverWindow := 0
+		try MouseGetPos(&mouseX, &mouseY, &hoverWindow)
+		catch
+			return
 		
 		if hoverWindow == process
 			ResetCooldown()
